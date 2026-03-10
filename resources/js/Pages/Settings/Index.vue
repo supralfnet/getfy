@@ -26,6 +26,10 @@ const props = defineProps({
         type: Boolean,
         default: true,
     },
+    git_available: {
+        type: Boolean,
+        default: false,
+    },
 });
 
 const activeTab = ref(typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tab') === 'update' ? 'update' : 'email');
@@ -977,7 +981,7 @@ const selectClass =
                                     {{ updateCheckLoading ? 'Verificando...' : 'Verificar atualização' }}
                                 </button>
                                 <button
-                                    v-if="updateCheckResult?.available && updates_enabled"
+                                    v-if="updateCheckResult?.available && updates_enabled && git_available"
                                     type="button"
                                     :disabled="updateRunLoading"
                                     class="inline-flex items-center gap-2 rounded-xl bg-[var(--color-primary)] px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
@@ -987,6 +991,15 @@ const selectClass =
                                     {{ updateRunLoading ? 'Atualizando... Aguarde.' : 'Atualizar' }}
                                 </button>
                             </div>
+                        </div>
+                        <div
+                            v-if="!git_available"
+                            class="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/50 dark:bg-amber-900/20"
+                        >
+                            <p class="text-sm font-medium text-amber-800 dark:text-amber-200">Atualização automática indisponível</p>
+                            <p class="mt-1 text-sm text-amber-700 dark:text-amber-300">
+                                Este diretório não é um repositório Git. O botão &quot;Atualizar&quot; só funciona quando o projeto foi clonado com <code class="rounded bg-amber-100 px-1 dark:bg-amber-900/40">git clone</code> ou quando você executar <code class="rounded bg-amber-100 px-1 dark:bg-amber-900/40">git init</code> e configurar o remote <code class="rounded bg-amber-100 px-1 dark:bg-amber-900/40">origin</code> apontando para o repositório oficial.
+                            </p>
                         </div>
                         <div v-if="updateCheckResult" class="rounded-xl border border-zinc-200 bg-zinc-50/50 p-4 dark:border-zinc-600 dark:bg-zinc-800/50">
                             <p v-if="updateCheckResult.error" class="text-sm text-amber-600 dark:text-amber-400">{{ updateCheckResult.error }}</p>

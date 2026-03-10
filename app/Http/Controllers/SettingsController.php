@@ -31,11 +31,13 @@ class SettingsController extends Controller
 
         $changelogPath = base_path('CHANGELOG.md');
         $changelogLocal = is_file($changelogPath) ? file_get_contents($changelogPath) : null;
+        $gitAvailable = is_dir(base_path('.git'));
 
         return Inertia::render('Settings/Index', [
             'current_version' => config('getfy.version'),
             'changelog_local' => $changelogLocal,
             'updates_enabled' => config('getfy.updates_enabled', true),
+            'git_available' => $gitAvailable,
             'settings' => [
                 'email_provider' => Setting::get('email_provider', 'smtp', $tenantId),
                 'smtp_host' => Setting::get('smtp_host', '', $tenantId),
