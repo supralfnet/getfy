@@ -27,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->web(prepend: [
             \App\Http\Middleware\EnsureInstalled::class,
+            \App\Http\Middleware\EnsureDockerSetup::class,
         ], append: [
             \App\Http\Middleware\HandleInertiaRequests::class,
             \App\Http\Middleware\PreventCacheForHtml::class,

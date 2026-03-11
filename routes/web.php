@@ -14,6 +14,9 @@ Route::get('/storage/{path}', \App\Http\Controllers\StorageServeController::clas
 Route::any('/install', [\App\Http\Controllers\InstallServeController::class, '__invoke'])->defaults('path', null);
 Route::any('/install/{path}', [\App\Http\Controllers\InstallServeController::class, '__invoke'])->where('path', '.+');
 
+Route::get('/docker-setup', [\App\Http\Controllers\DockerSetupController::class, 'show'])->name('docker-setup');
+Route::post('/docker-setup', [\App\Http\Controllers\DockerSetupController::class, 'store'])->middleware('throttle:10,1');
+
 // Favicon: evita 404 no console quando o navegador solicita /favicon.ico
 Route::get('/favicon.ico', function () {
     return redirect('https://cdn.getfy.cloud/collapsed-logo.png', 302);
