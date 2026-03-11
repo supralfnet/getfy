@@ -1,4 +1,4 @@
-FROM node:20-alpine AS node_builder
+FROM node:20-bookworm-slim AS node_builder
 
 WORKDIR /app
 
@@ -6,8 +6,12 @@ COPY package.json package-lock.json vite.config.js ./
 COPY resources ./resources
 COPY public ./public
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN rm -rf public/build \
-    && npm ci \
+    && npm ci --no-audit --no-fund \
     && npm run build
 
 FROM php:8.2-cli-alpine AS php_base
