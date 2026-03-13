@@ -8,10 +8,24 @@ use Illuminate\View\View;
 
 class DockerSetupController extends Controller
 {
+    private function resolveRequestScheme(Request $request): string
+    {
+        $forwardedProto = strtolower((string) $request->headers->get('x-forwarded-proto', ''));
+        if (str_contains($forwardedProto, 'https')) {
+            return 'https';
+        }
+
+        $cfVisitor = strtolower((string) $request->headers->get('cf-visitor', ''));
+        if (str_contains($cfVisitor, 'https')) {
+            return 'https';
+        }
+
+        return $request->isSecure() ? 'https' : 'http';
+    }
+
     public function show(Request $request): View
     {
-        $forwardedProto = (string) $request->headers->get('x-forwarded-proto', '');
-        $scheme = str_contains(strtolower($forwardedProto), 'https') ? 'https' : ($request->isSecure() ? 'https' : 'http');
+        $scheme = $this->resolveRequestScheme($request);
 
         $forwardedHost = (string) $request->headers->get('x-forwarded-host', '');
         $host = trim(explode(',', $forwardedHost)[0] ?? '');
@@ -32,8 +46,7 @@ class DockerSetupController extends Controller
             'domain' => ['required', 'string', 'max:255'],
         ]);
 
-        $forwardedProto = (string) $request->headers->get('x-forwarded-proto', '');
-        $scheme = str_contains(strtolower($forwardedProto), 'https') ? 'https' : ($request->isSecure() ? 'https' : 'http');
+        $scheme = $this->resolveRequestScheme($request);
 
         $host = strtolower(trim((string) $validated['domain']));
         $host = preg_replace('#^https?://#', '', $host);

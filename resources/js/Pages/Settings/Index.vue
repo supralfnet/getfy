@@ -4,8 +4,8 @@ import { useForm } from '@inertiajs/vue3';
 import LayoutInfoprodutor from '@/Layouts/LayoutInfoprodutor.vue';
 import Button from '@/components/ui/Button.vue';
 import { Mail, Languages, Banknote, HardDrive, Clock, AlertCircle, Trash2, RefreshCw, Upload, Download } from 'lucide-vue-next';
-import IntegrationCard from '@/Components/IntegrationCard.vue';
-import EmailProviderSidebar from '@/Components/EmailProviderSidebar.vue';
+import IntegrationCard from '@/components/IntegrationCard.vue';
+import EmailProviderSidebar from '@/components/EmailProviderSidebar.vue';
 
 defineOptions({ layout: LayoutInfoprodutor });
 
