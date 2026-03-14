@@ -60,6 +60,7 @@ if (!(Test-Path $envFile)) {
         GETFY_QUEUE_WORKER_MEMORY = if ($env:GETFY_QUEUE_WORKER_MEMORY) { $env:GETFY_QUEUE_WORKER_MEMORY } else { "128" }
         GETFY_QUEUE_WORKER_MAX_TIME = if ($env:GETFY_QUEUE_WORKER_MAX_TIME) { $env:GETFY_QUEUE_WORKER_MAX_TIME } else { "3600" }
         GETFY_QUEUE_WORKER_MAX_JOBS = if ($env:GETFY_QUEUE_WORKER_MAX_JOBS) { $env:GETFY_QUEUE_WORKER_MAX_JOBS } else { "1000" }
+        GETFY_CADDY_HOST = if ($env:GETFY_CADDY_HOST) { $env:GETFY_CADDY_HOST } else { ":80" }
     }
 } else {
     $content = Get-Content $envFile -Raw
@@ -78,4 +79,11 @@ if (!(Test-Path $envFile)) {
     }
 }
 
-docker compose --env-file $envFile up --build -d
+$composeFilesRaw = if ($env:GETFY_COMPOSE_FILES) { $env:GETFY_COMPOSE_FILES } else { "docker-compose.yml" }
+$composeFiles = $composeFilesRaw -split ';' | Where-Object { $_ -and $_.Trim() -ne "" } | ForEach-Object { $_.Trim() }
+$composeArgs = @()
+foreach ($f in $composeFiles) {
+    $composeArgs += @("-f", $f)
+}
+
+docker compose @composeArgs --env-file $envFile up --build -d

@@ -1,0 +1,4 @@
+{$GETFY_CADDY_HOST} {
+  reverse_proxy app:80
+  encode zstd gzip
+}

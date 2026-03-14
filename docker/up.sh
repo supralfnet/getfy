@@ -40,6 +40,7 @@ GETFY_REDIS_MAXMEMORY_POLICY=${GETFY_REDIS_MAXMEMORY_POLICY:-allkeys-lru}
 GETFY_QUEUE_WORKER_MEMORY=${GETFY_QUEUE_WORKER_MEMORY:-128}
 GETFY_QUEUE_WORKER_MAX_TIME=${GETFY_QUEUE_WORKER_MAX_TIME:-3600}
 GETFY_QUEUE_WORKER_MAX_JOBS=${GETFY_QUEUE_WORKER_MAX_JOBS:-1000}
+GETFY_CADDY_HOST=${GETFY_CADDY_HOST:-:80}
 EOF
 else
   if grep -Eq '^\s*GETFY_DB_USERNAME\s*=\s*$' "$ENV_FILE" || grep -Eq '^\s*GETFY_DB_PASSWORD\s*=\s*$' "$ENV_FILE" \
@@ -68,4 +69,15 @@ else
   fi
 fi
 
-docker compose --env-file "$ENV_FILE" up --build -d
+COMPOSE_FILES="${GETFY_COMPOSE_FILES:-docker-compose.yml}"
+COMPOSE_ARGS=""
+OLD_IFS="$IFS"
+IFS=';'
+for f in $COMPOSE_FILES; do
+  if [ -n "$f" ]; then
+    COMPOSE_ARGS="$COMPOSE_ARGS -f $f"
+  fi
+done
+IFS="$OLD_IFS"
+
+docker compose $COMPOSE_ARGS --env-file "$ENV_FILE" up --build -d
