@@ -197,14 +197,20 @@ class SpacepagDriver implements GatewayDriver
 
     private function shouldForceIpv4ByDefault(array $credentials): bool
     {
-        $v = $credentials['force_ipv4'] ?? false;
+        $v = $credentials['force_ipv4'] ?? null;
+        if ($v === null) {
+            return filter_var(getenv('GETFY_DOCKER') ?: false, FILTER_VALIDATE_BOOLEAN);
+        }
 
         return filter_var($v, FILTER_VALIDATE_BOOLEAN);
     }
 
     private function shouldDisableProxy(array $credentials): bool
     {
-        $v = $credentials['disable_proxy'] ?? false;
+        $v = $credentials['disable_proxy'] ?? null;
+        if ($v === null) {
+            return filter_var(getenv('GETFY_DOCKER') ?: false, FILTER_VALIDATE_BOOLEAN);
+        }
 
         return filter_var($v, FILTER_VALIDATE_BOOLEAN);
     }
@@ -303,6 +309,7 @@ class SpacepagDriver implements GatewayDriver
 
     private function requestWithFallback(callable $doRequest, array $credentials, string $url): \Illuminate\Http\Client\Response
     {
+        $url = $this->sanitizeUrlString($url);
         $forceIpv4Default = $this->shouldForceIpv4ByDefault($credentials);
         try {
             if ($forceIpv4Default) {
