@@ -12,6 +12,7 @@
 - Adiciona liberação programada de módulos e aulas por dias ou data.
 - Adiciona busca e filtros avançados na página de vendas (/vendas).
 - Adiciona busca de alunos por nome/e-mail na página de alunos.
+- Adiciona script update.sh para atualização manual em VPS (Docker).
 
 ### Fixed
 
@@ -20,6 +21,10 @@
 - Corrige botão na página de obrigado para produto "Somente link de pagamento".
 - Corrige venda no cartão (Mercado Pago) ficando como pendente após aprovação.
 - Corrige instabilidade/timeouts ao gerar PIX no Spacepag em alguns servidores (retry/IPv4 e timeouts configuráveis).
+- Corrige atualização automática em VPS/Docker quando o Git bloqueia o repositório por "dubious ownership".
+- Corrige instalador Docker quando há alterações locais no repositório (stash obrigatório antes do checkout).
+- Corrige editor de checkout resetando gateways selecionados por método de pagamento ao salvar.
+- Bloqueia acesso ao /docker-setup após a configuração inicial do domínio.
 - Corrige dropdown de ações na listagem de vendas (/vendas) para abrir sobre a tabela.
 - Corrige preview do editor de checkout para respeitar oferta/plano ao renderizar.
 - Corrige player de vídeo da área de membros (CSP do YouTube, fullscreen e fallback).

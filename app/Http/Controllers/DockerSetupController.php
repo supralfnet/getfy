@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\DockerSetupState;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -25,6 +26,13 @@ class DockerSetupController extends Controller
 
     public function show(Request $request): View
     {
+        if (! DockerSetupState::isDocker()) {
+            abort(404);
+        }
+        if (DockerSetupState::isSetupDone()) {
+            abort(404);
+        }
+
         $scheme = $this->resolveRequestScheme($request);
 
         $forwardedHost = (string) $request->headers->get('x-forwarded-host', '');
@@ -42,6 +50,13 @@ class DockerSetupController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        if (! DockerSetupState::isDocker()) {
+            abort(404);
+        }
+        if (DockerSetupState::isSetupDone()) {
+            abort(404);
+        }
+
         $validated = $request->validate([
             'domain' => ['required', 'string', 'max:255'],
         ]);

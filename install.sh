@@ -114,12 +114,20 @@ if [ -d "$INSTALL_DIR/.git" ]; then
   GIT_BASE=(git -c safe.directory="$INSTALL_DIR" -C "$INSTALL_DIR")
   $SUDO "${GIT_BASE[@]}" remote set-url origin "$REPO_URL" >/dev/null 2>&1 || true
   HAS_LOCAL_CHANGES=0
-  if [ -n "$($SUDO "${GIT_BASE[@]}" status --porcelain 2>/dev/null || true)" ]; then
+  STATUS_OUT="$($SUDO "${GIT_BASE[@]}" status --porcelain 2>/dev/null || true)"
+  if [ -n "$STATUS_OUT" ]; then
     HAS_LOCAL_CHANGES=1
-    $SUDO "${GIT_BASE[@]}" stash push -u -m "getfy-install" >/dev/null 2>&1 || true
+    if ! $SUDO "${GIT_BASE[@]}" stash push -u -m "getfy-install" >/dev/null 2>&1; then
+      echo "Falha ao aplicar stash automaticamente. Resolva manualmente em: $INSTALL_DIR" >&2
+      exit 1
+    fi
   fi
   $SUDO "${GIT_BASE[@]}" fetch --all --prune
-  $SUDO "${GIT_BASE[@]}" checkout -B "$BRANCH" "origin/$BRANCH"
+  if ! $SUDO "${GIT_BASE[@]}" checkout -B "$BRANCH" "origin/$BRANCH"; then
+    echo "Falha ao atualizar código (checkout). Se você tem alterações locais, rode:" >&2
+    echo "  cd \"$INSTALL_DIR\" && git stash push -u -m getfy-install" >&2
+    exit 1
+  fi
   $SUDO "${GIT_BASE[@]}" reset --hard "origin/$BRANCH"
   if [ "$HAS_LOCAL_CHANGES" -eq 1 ]; then
     if ! $SUDO "${GIT_BASE[@]}" stash pop >/dev/null 2>&1; then

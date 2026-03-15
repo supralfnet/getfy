@@ -41,7 +41,8 @@ class CheckoutConfigController extends Controller
             $checkoutSlug = $plan->checkout_slug;
             $scope = ['type' => 'plan', 'offer_id' => null, 'plan_id' => $plan->id, 'checkout_slug' => $checkoutSlug, 'label' => 'Plano: ' . $plan->name];
         } else {
-            $config = $produto->checkout_config;
+            $stored = $produto->checkout_config ?? [];
+            $config = array_replace_recursive($defaults, $stored);
         }
 
         $tenantId = auth()->user()->tenant_id;
@@ -82,25 +83,35 @@ class CheckoutConfigController extends Controller
             'plan_id' => ['nullable', 'integer'],
         ]);
 
-        $merged = array_replace_recursive($defaults, $validated['config']);
+        $offerId = $validated['offer_id'] ?? null;
+        $planId = $validated['plan_id'] ?? null;
+
+        $stored = [];
+        if ($offerId) {
+            $offer = ProductOffer::where('id', $offerId)->where('product_id', $produto->id)->firstOrFail();
+            $stored = $offer->checkout_config ?? [];
+        } elseif ($planId) {
+            $plan = SubscriptionPlan::where('id', $planId)->where('product_id', $produto->id)->firstOrFail();
+            $stored = $plan->checkout_config ?? [];
+        } else {
+            $stored = $produto->checkout_config ?? [];
+        }
+
+        $base = array_replace_recursive($defaults, is_array($stored) ? $stored : []);
+        $merged = array_replace_recursive($base, $validated['config']);
 
         // Downsell só pode estar ativo se upsell estiver ativo
         if (!($merged['upsell']['enabled'] ?? false)) {
             $merged['downsell']['enabled'] = false;
         }
 
-        $offerId = $validated['offer_id'] ?? null;
-        $planId = $validated['plan_id'] ?? null;
-
         if ($offerId) {
-            $offer = ProductOffer::where('id', $offerId)->where('product_id', $produto->id)->firstOrFail();
             $offer->update(['checkout_config' => $merged]);
             return $request->expectsJson()
                 ? response()->json(['success' => true, 'message' => 'Checkout da oferta atualizado.'])
                 : back()->with('success', 'Checkout da oferta atualizado.');
         }
         if ($planId) {
-            $plan = SubscriptionPlan::where('id', $planId)->where('product_id', $produto->id)->firstOrFail();
             $plan->update(['checkout_config' => $merged]);
             return $request->expectsJson()
                 ? response()->json(['success' => true, 'message' => 'Checkout do plano atualizado.'])
