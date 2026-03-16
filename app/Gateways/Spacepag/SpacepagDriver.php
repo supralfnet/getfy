@@ -40,8 +40,11 @@ class SpacepagDriver implements GatewayDriver
                 'email' => $consumer['email'] ?? '',
             ],
             'external_id' => $externalId,
-            'postback' => $postbackUrl,
         ];
+        $validPostback = $this->validPostbackUrl($postbackUrl);
+        if ($validPostback !== null) {
+            $body['postback'] = $validPostback;
+        }
 
         $split = $this->buildSplit($credentials);
         if ($split !== []) {
@@ -166,6 +169,41 @@ class SpacepagDriver implements GatewayDriver
         $v = str_replace(['`', '"', "'"], '', $v);
 
         return trim($v);
+    }
+
+    private function validPostbackUrl(string $value): ?string
+    {
+        if ($value === '') {
+            return null;
+        }
+
+        $parts = parse_url($value);
+        if (! is_array($parts)) {
+            return null;
+        }
+
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        if ($scheme !== 'https') {
+            return null;
+        }
+
+        $host = (string) ($parts['host'] ?? '');
+        if ($host === '') {
+            return null;
+        }
+
+        $hostLower = strtolower($host);
+        if ($hostLower === 'localhost' || $hostLower === '127.0.0.1' || $hostLower === '::1') {
+            return null;
+        }
+
+        if (filter_var($host, FILTER_VALIDATE_IP)) {
+            if (filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+                return null;
+            }
+        }
+
+        return $value;
     }
 
     private function baseUrl(array $credentials): string
