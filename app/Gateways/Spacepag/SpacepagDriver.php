@@ -11,6 +11,8 @@ class SpacepagDriver implements GatewayDriver
 {
     private const BASE_URL = 'https://api.spacepag.com.br/v1';
 
+    private ?array $lastRequestMeta = null;
+
     public function testConnection(array $credentials): bool
     {
         $token = $this->getToken($credentials);
@@ -30,14 +32,16 @@ class SpacepagDriver implements GatewayDriver
             throw new \RuntimeException('Spacepag: falha na autenticação.');
         }
 
-        $document = $this->normalizeDocument($consumer['document'] ?? '');
+        $document = $this->normalizeDocument((string) ($consumer['document'] ?? ''));
+        $name = $this->sanitizeName((string) ($consumer['name'] ?? ''));
+        $email = $this->sanitizeEmail((string) ($consumer['email'] ?? ''));
         $postbackUrl = $this->sanitizeUrlString($postbackUrl);
         $body = [
             'amount' => round($amount, 2),
             'consumer' => [
-                'name' => $consumer['name'] ?? '',
+                'name' => $name,
                 'document' => $document,
-                'email' => $consumer['email'] ?? '',
+                'email' => $email,
             ],
             'external_id' => $externalId,
         ];
@@ -52,9 +56,24 @@ class SpacepagDriver implements GatewayDriver
         }
 
         $url = rtrim($this->baseUrl($credentials), '/').'/cob';
-        $response = $this->requestWithFallback(function (bool $forceIpv4, ?int $timeoutSeconds, ?int $connectTimeoutSeconds) use ($credentials, $token, $url, $body) {
-            return $this->httpWithToken($token, $credentials, $forceIpv4, $timeoutSeconds, $connectTimeoutSeconds)->post($url, $body);
-        }, $credentials, $url);
+        $this->lastRequestMeta = [
+            'op' => 'cob',
+            'amount' => $body['amount'],
+            'consumer_name_len' => strlen((string) $name),
+            'consumer_doc_len' => strlen((string) $document),
+            'consumer_has_email' => $email !== '',
+            'external_id_len' => strlen((string) $externalId),
+            'has_postback' => isset($body['postback']),
+            'postback_scheme' => isset($body['postback']) ? (parse_url((string) $body['postback'], PHP_URL_SCHEME) ?: null) : null,
+            'has_split' => isset($body['split']),
+        ];
+        try {
+            $response = $this->requestWithFallback(function (bool $forceIpv4, ?int $timeoutSeconds, ?int $connectTimeoutSeconds) use ($credentials, $token, $url, $body) {
+                return $this->httpWithToken($token, $credentials, $forceIpv4, $timeoutSeconds, $connectTimeoutSeconds)->post($url, $body);
+            }, $credentials, $url);
+        } finally {
+            $this->lastRequestMeta = null;
+        }
 
         if (! $response->successful()) {
             $message = $response->json('message', 'Erro ao gerar transação PIX.');
@@ -135,12 +154,17 @@ class SpacepagDriver implements GatewayDriver
 
         $url = rtrim($this->baseUrl($credentials), '/').'/auth';
         try {
-            $response = $this->requestWithFallback(function (bool $forceIpv4, ?int $timeoutSeconds, ?int $connectTimeoutSeconds) use ($credentials, $url, $publicKey, $secretKey) {
-                return $this->http($credentials, $forceIpv4, $timeoutSeconds, $connectTimeoutSeconds)->post($url, [
-                    'public_key' => $publicKey,
-                    'secret_key' => $secretKey,
-                ]);
-            }, $credentials, $url);
+            $this->lastRequestMeta = ['op' => 'auth'];
+            try {
+                $response = $this->requestWithFallback(function (bool $forceIpv4, ?int $timeoutSeconds, ?int $connectTimeoutSeconds) use ($credentials, $url, $publicKey, $secretKey) {
+                    return $this->http($credentials, $forceIpv4, $timeoutSeconds, $connectTimeoutSeconds)->post($url, [
+                        'public_key' => $publicKey,
+                        'secret_key' => $secretKey,
+                    ]);
+                }, $credentials, $url);
+            } finally {
+                $this->lastRequestMeta = null;
+            }
         } catch (\Throwable $e) {
             Log::warning('Spacepag: auth request failed', [
                 'message' => $e->getMessage(),
@@ -159,7 +183,49 @@ class SpacepagDriver implements GatewayDriver
 
     private function normalizeDocument(string $document): string
     {
-        return preg_replace('/\D/', '', $document);
+        $digits = preg_replace('/\D/', '', $document);
+        $digits = is_string($digits) ? $digits : '';
+
+        if (strlen($digits) === 11 || strlen($digits) === 14) {
+            return $digits;
+        }
+
+        if (strlen($digits) > 14) {
+            $digits = substr($digits, -14);
+            if (strlen($digits) === 11 || strlen($digits) === 14) {
+                return $digits;
+            }
+        }
+
+        return '00000000000';
+    }
+
+    private function sanitizeName(string $name): string
+    {
+        $name = trim($name);
+        $name = preg_replace('/[\x00-\x1F\x7F]/u', '', $name) ?: '';
+        $name = trim($name);
+        if ($name === '') {
+            return 'Cliente';
+        }
+
+        if (strlen($name) > 80) {
+            return substr($name, 0, 80);
+        }
+
+        return $name;
+    }
+
+    private function sanitizeEmail(string $email): string
+    {
+        $email = trim($email);
+        $email = preg_replace('/[\x00-\x1F\x7F]/u', '', $email) ?: '';
+        $email = trim($email);
+        if ($email === '') {
+            return '';
+        }
+
+        return filter_var($email, FILTER_VALIDATE_EMAIL) ? $email : '';
     }
 
     private function sanitizeUrlString(string $value): string
@@ -405,6 +471,7 @@ class SpacepagDriver implements GatewayDriver
             'env_http_proxy' => getenv('HTTP_PROXY') ? true : false,
             'env_https_proxy' => getenv('HTTPS_PROXY') ? true : false,
             'env_no_proxy' => getenv('NO_PROXY') ? true : false,
+            'meta' => $this->lastRequestMeta,
         ]);
     }
 
