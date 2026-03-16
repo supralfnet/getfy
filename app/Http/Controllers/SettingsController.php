@@ -42,6 +42,33 @@ class SettingsController extends Controller
             $currentVersion = (string) config('getfy.version');
         }
 
+        $r2EnvKey = (string) env('R2_ACCESS_KEY_ID', '');
+        $r2EnvSecret = (string) env('R2_SECRET_ACCESS_KEY', '');
+        $r2EnvBucket = (string) env('R2_BUCKET', '');
+        $r2EnvEndpoint = (string) env('R2_ENDPOINT', '');
+        $r2EnvConfigured = $r2EnvKey !== '' && $r2EnvSecret !== '' && $r2EnvBucket !== '' && $r2EnvEndpoint !== '';
+
+        $storageProviderSetting = Setting::get('storage_provider', null, $tenantId);
+        $effectiveStorageProvider = ($storageProviderSetting === null || $storageProviderSetting === '')
+            ? ($cloudMode && $r2EnvConfigured ? 'r2' : 'local')
+            : $storageProviderSetting;
+
+        $storageS3Key = (string) Setting::get('storage_s3_key', '', $tenantId);
+        $storageS3Bucket = (string) Setting::get('storage_s3_bucket', '', $tenantId);
+        $storageS3Region = (string) Setting::get('storage_s3_region', 'us-east-1', $tenantId);
+        $storageS3Endpoint = (string) Setting::get('storage_s3_endpoint', '', $tenantId);
+        $storageS3Url = (string) Setting::get('storage_s3_url', '', $tenantId);
+        $storageS3SecretRaw = (string) Setting::get('storage_s3_secret', '', $tenantId);
+
+        $cloudR2Managed = $cloudMode
+            && $r2EnvConfigured
+            && $effectiveStorageProvider === 'r2'
+            && trim($storageS3Key) === ''
+            && trim($storageS3Bucket) === ''
+            && trim($storageS3Endpoint) === ''
+            && trim($storageS3Url) === ''
+            && trim($storageS3SecretRaw) === '';
+
         return Inertia::render('Settings/Index', [
             'current_version' => $currentVersion,
             'updates_enabled' => config('getfy.updates_enabled', true),
@@ -71,12 +98,13 @@ class SettingsController extends Controller
                 'sendgrid_mail_from_name' => Setting::get('sendgrid_mail_from_name', config('mail.from.name', ''), $tenantId),
                 'checkout_translations' => $checkoutTranslations,
                 'currencies' => $currencies,
-                'storage_provider' => Setting::get('storage_provider', 'local', $tenantId),
-                'storage_s3_key' => Setting::get('storage_s3_key', '', $tenantId),
-                'storage_s3_bucket' => Setting::get('storage_s3_bucket', '', $tenantId),
-                'storage_s3_region' => Setting::get('storage_s3_region', 'us-east-1', $tenantId),
-                'storage_s3_endpoint' => Setting::get('storage_s3_endpoint', '', $tenantId),
-                'storage_s3_url' => Setting::get('storage_s3_url', '', $tenantId),
+                'storage_provider' => $effectiveStorageProvider,
+                'storage_s3_key' => $cloudR2Managed ? '' : $storageS3Key,
+                'storage_s3_bucket' => $cloudR2Managed ? '' : $storageS3Bucket,
+                'storage_s3_region' => $effectiveStorageProvider === 'r2' ? 'auto' : $storageS3Region,
+                'storage_s3_endpoint' => $cloudR2Managed ? '' : $storageS3Endpoint,
+                'storage_s3_url' => $cloudR2Managed ? '' : $storageS3Url,
+                'storage_cloud_r2_managed' => $cloudR2Managed,
             ],
         ]);
     }

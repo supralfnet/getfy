@@ -21,23 +21,43 @@ class StorageTestController extends Controller
             ]);
         }
 
-        $request->validate([
-            'storage_provider' => ['required', 'string', 'in:s3,wasabi,r2'],
-            'storage_s3_key' => ['required', 'string', 'max:255'],
-            'storage_s3_secret' => ['nullable', 'string', 'max:512'],
-            'storage_s3_bucket' => ['required', 'string', 'max:255'],
-            'storage_s3_region' => ['nullable', 'string', 'max:64'],
-            'storage_s3_endpoint' => ['nullable', 'string', 'max:512'],
-        ], [
-            'storage_provider.required' => 'Selecione um provedor de storage (S3, Wasabi ou R2).',
-            'storage_provider.in' => 'Provedor inválido. Use S3, Wasabi ou R2.',
-            'storage_s3_key.required' => 'O campo Access Key é obrigatório.',
-            'storage_s3_bucket.required' => 'O campo Bucket é obrigatório.',
-        ]);
+        $cloudMode = (bool) config('getfy.cloud_mode', false);
+        $r2EnvKey = (string) env('R2_ACCESS_KEY_ID', '');
+        $r2EnvSecret = (string) env('R2_SECRET_ACCESS_KEY', '');
+        $r2EnvBucket = (string) env('R2_BUCKET', '');
+        $r2EnvEndpoint = (string) env('R2_ENDPOINT', '');
+        $r2EnvConfigured = $r2EnvKey !== '' && $r2EnvSecret !== '' && $r2EnvBucket !== '' && $r2EnvEndpoint !== '';
+
+        $keyInput = (string) $request->input('storage_s3_key', '');
+        $bucketInput = (string) $request->input('storage_s3_bucket', '');
+        $endpointInput = (string) $request->input('storage_s3_endpoint', '');
+
+        $useEnvR2 = $cloudMode
+            && $provider === 'r2'
+            && $r2EnvConfigured
+            && trim($keyInput) === ''
+            && trim($bucketInput) === ''
+            && trim($endpointInput) === '';
+
+        if (! $useEnvR2) {
+            $request->validate([
+                'storage_provider' => ['required', 'string', 'in:s3,wasabi,r2'],
+                'storage_s3_key' => ['required', 'string', 'max:255'],
+                'storage_s3_secret' => ['nullable', 'string', 'max:512'],
+                'storage_s3_bucket' => ['required', 'string', 'max:255'],
+                'storage_s3_region' => ['nullable', 'string', 'max:64'],
+                'storage_s3_endpoint' => ['nullable', 'string', 'max:512'],
+            ], [
+                'storage_provider.required' => 'Selecione um provedor de storage (S3, Wasabi ou R2).',
+                'storage_provider.in' => 'Provedor inválido. Use S3, Wasabi ou R2.',
+                'storage_s3_key.required' => 'O campo Access Key é obrigatório.',
+                'storage_s3_bucket.required' => 'O campo Bucket é obrigatório.',
+            ]);
+        }
 
         $tenantId = $request->user()->tenant_id;
-        $key = $request->input('storage_s3_key');
-        $secret = $request->input('storage_s3_secret');
+        $key = $useEnvR2 ? $r2EnvKey : $request->input('storage_s3_key');
+        $secret = $useEnvR2 ? $r2EnvSecret : $request->input('storage_s3_secret');
         if ($secret === null || $secret === '') {
             $secretRaw = Setting::get('storage_s3_secret', '', $tenantId);
             if ($secretRaw !== '') {
@@ -54,9 +74,9 @@ class StorageTestController extends Controller
                 'message' => 'O campo Secret Key é obrigatório. Preencha e salve as configurações uma vez para que fique guardado.',
             ], 422);
         }
-        $bucket = $request->input('storage_s3_bucket');
-        $region = $request->input('storage_s3_region', 'us-east-1');
-        $endpoint = $request->input('storage_s3_endpoint', '');
+        $bucket = $useEnvR2 ? $r2EnvBucket : $request->input('storage_s3_bucket');
+        $region = $provider === 'r2' ? 'auto' : $request->input('storage_s3_region', 'us-east-1');
+        $endpoint = $useEnvR2 ? $r2EnvEndpoint : $request->input('storage_s3_endpoint', '');
 
         $isR2 = $endpoint && str_contains($endpoint, 'r2.cloudflarestorage.com');
         $regionForConfig = $isR2 ? 'auto' : ($region ?: 'us-east-1');

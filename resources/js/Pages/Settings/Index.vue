@@ -92,6 +92,8 @@ const form = useForm({
     storage_s3_url: props.settings.storage_s3_url ?? '',
 });
 
+const showCloudR2Override = ref(false);
+
 const testForm = useForm({
     test_to: '',
 });
@@ -415,7 +417,7 @@ const storageMigrateLoading = vueRef(false);
 async function testStorageConnection() {
     storageTestResult.value = { status: null, message: '' };
     const provider = form.storage_provider;
-    if (provider !== 'local') {
+    if (provider !== 'local' && !isCloudManagedR2.value) {
         const key = (form.storage_s3_key ?? '').trim();
         const bucket = (form.storage_s3_bucket ?? '').trim();
         if (!key || !bucket) {
@@ -429,14 +431,16 @@ async function testStorageConnection() {
     storageTestLoading.value = true;
     const region =
         provider === 'r2' ? 'auto' : (form.storage_s3_region && form.storage_s3_region.trim()) || 'us-east-1';
-    const payload = {
-        storage_provider: provider,
-        storage_s3_key: form.storage_s3_key ?? '',
-        storage_s3_secret: form.storage_s3_secret ?? '',
-        storage_s3_bucket: form.storage_s3_bucket ?? '',
-        storage_s3_region: region,
-        storage_s3_endpoint: form.storage_s3_endpoint ?? '',
-    };
+    const payload = isCloudManagedR2.value
+        ? { storage_provider: 'r2' }
+        : {
+            storage_provider: provider,
+            storage_s3_key: form.storage_s3_key ?? '',
+            storage_s3_secret: form.storage_s3_secret ?? '',
+            storage_s3_bucket: form.storage_s3_bucket ?? '',
+            storage_s3_region: region,
+            storage_s3_endpoint: form.storage_s3_endpoint ?? '',
+        };
     try {
         const res = await window.axios.post('/configuracoes/storage/test', payload);
         storageTestResult.value = { status: 'success', message: res.data.message || 'Conexão estabelecida com sucesso.' };
@@ -455,6 +459,7 @@ async function testStorageConnection() {
 
 function onStorageProviderChange(providerId) {
     form.storage_provider = providerId;
+    showCloudR2Override.value = false;
     const prov = storageProviders.find((p) => p.id === providerId);
     if (prov?.endpoint && !form.storage_s3_endpoint) {
         form.storage_s3_endpoint = prov.endpoint;
@@ -470,11 +475,20 @@ const isStorageRemote = computed(
         form.storage_provider === 'wasabi' ||
         form.storage_provider === 'r2',
 );
+
+const isCloudManagedR2 = computed(
+    () =>
+        !!props.cloud_mode &&
+        !!props.settings.storage_cloud_r2_managed &&
+        form.storage_provider === 'r2' &&
+        showCloudR2Override.value === false,
+);
 const canMigrateStorage = computed(
     () =>
         isStorageRemote.value &&
-        (form.storage_s3_key ?? '').trim() !== '' &&
-        (form.storage_s3_bucket ?? '').trim() !== '',
+        (isCloudManagedR2.value ||
+            ((form.storage_s3_key ?? '').trim() !== '' &&
+                (form.storage_s3_bucket ?? '').trim() !== '')),
 );
 
 async function migrateStorageToRemote() {
@@ -696,65 +710,89 @@ const selectClass =
                             </div>
 
                             <div v-if="form.storage_provider !== 'local'" class="space-y-4 rounded-xl border border-zinc-200 bg-zinc-50/50 p-5 dark:border-zinc-600 dark:bg-zinc-800/50">
-                                <h3 class="text-sm font-medium text-zinc-900 dark:text-white">Credenciais S3</h3>
-                                <div class="grid gap-4 sm:grid-cols-2">
-                                    <div>
-                                        <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Access Key</label>
-                                        <input
-                                            v-model="form.storage_s3_key"
-                                            type="text"
-                                            :class="inputClass"
-                                            placeholder="AKIA..."
-                                            autocomplete="off"
-                                        />
+                                <div
+                                    v-if="isCloudManagedR2"
+                                    class="flex items-start justify-between gap-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800/50 dark:bg-emerald-900/20"
+                                >
+                                    <div class="min-w-0">
+                                        <p class="text-sm font-medium text-emerald-900 dark:text-emerald-100">
+                                            Parabéns, você está usando o Getfy Cloud com Cloudflare R2.
+                                        </p>
+                                        <p class="mt-1 text-sm text-emerald-800 dark:text-emerald-200">
+                                            As credenciais foram provisionadas automaticamente.
+                                        </p>
                                     </div>
-                                    <div>
-                                        <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Secret Key</label>
-                                        <input
-                                            v-model="form.storage_s3_secret"
-                                            type="password"
-                                            :class="inputClass"
-                                            placeholder="••••••••"
-                                            autocomplete="new-password"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Bucket</label>
-                                        <input
-                                            v-model="form.storage_s3_bucket"
-                                            type="text"
-                                            :class="inputClass"
-                                            placeholder="meu-bucket"
-                                        />
-                                    </div>
-                                    <div v-if="form.storage_provider !== 'r2'">
-                                        <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Region</label>
-                                        <input
-                                            v-model="form.storage_s3_region"
-                                            type="text"
-                                            :class="inputClass"
-                                            placeholder="us-east-1"
-                                        />
-                                    </div>
-                                    <div class="sm:col-span-2">
-                                        <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Endpoint (R2: https://ACCOUNT_ID.r2.cloudflarestorage.com)</label>
-                                        <input
-                                            v-model="form.storage_s3_endpoint"
-                                            type="text"
-                                            :class="inputClass"
-                                            placeholder="https://s3.wasabisys.com ou vazio para AWS"
-                                        />
-                                    </div>
-                                    <div class="sm:col-span-2">
-                                        <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">URL pública opcional (CDN ou domínio customizado)</label>
-                                        <input
-                                            v-model="form.storage_s3_url"
-                                            type="text"
-                                            :class="inputClass"
-                                            placeholder="https://cdn.exemplo.com"
-                                        />
-                                    </div>
+                                    <button
+                                        type="button"
+                                        class="shrink-0 inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-4 py-2.5 text-sm font-medium text-emerald-700 transition hover:border-emerald-400 hover:text-emerald-800 dark:border-emerald-700 dark:bg-zinc-800 dark:text-emerald-200 dark:hover:border-emerald-600"
+                                        @click="showCloudR2Override = true"
+                                    >
+                                        Usar minhas credenciais
+                                    </button>
                                 </div>
+
+                                <template v-else>
+                                    <h3 class="text-sm font-medium text-zinc-900 dark:text-white">Credenciais S3</h3>
+                                    <div class="grid gap-4 sm:grid-cols-2">
+                                        <div>
+                                            <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Access Key</label>
+                                            <input
+                                                v-model="form.storage_s3_key"
+                                                type="text"
+                                                :class="inputClass"
+                                                placeholder="AKIA..."
+                                                autocomplete="off"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Secret Key</label>
+                                            <input
+                                                v-model="form.storage_s3_secret"
+                                                type="password"
+                                                :class="inputClass"
+                                                placeholder="••••••••"
+                                                autocomplete="new-password"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Bucket</label>
+                                            <input
+                                                v-model="form.storage_s3_bucket"
+                                                type="text"
+                                                :class="inputClass"
+                                                placeholder="meu-bucket"
+                                            />
+                                        </div>
+                                        <div v-if="form.storage_provider !== 'r2'">
+                                            <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Region</label>
+                                            <input
+                                                v-model="form.storage_s3_region"
+                                                type="text"
+                                                :class="inputClass"
+                                                placeholder="us-east-1"
+                                            />
+                                        </div>
+                                        <div class="sm:col-span-2">
+                                            <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Endpoint (R2: https://ACCOUNT_ID.r2.cloudflarestorage.com)</label>
+                                            <input
+                                                v-model="form.storage_s3_endpoint"
+                                                type="text"
+                                                :class="inputClass"
+                                                placeholder="https://s3.wasabisys.com ou vazio para AWS"
+                                            />
+                                        </div>
+                                        <div class="sm:col-span-2">
+                                            <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">URL pública opcional (CDN ou domínio customizado)</label>
+                                            <input
+                                                v-model="form.storage_s3_url"
+                                                type="text"
+                                                :class="inputClass"
+                                                placeholder="https://cdn.exemplo.com"
+                                            />
+                                        </div>
+                                    </div>
+                                </template>
+
                                 <div class="flex flex-wrap items-center gap-3 pt-2">
                                     <button
                                         type="button"

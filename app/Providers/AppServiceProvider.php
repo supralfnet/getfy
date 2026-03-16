@@ -43,6 +43,7 @@ class AppServiceProvider extends ServiceProvider
         $this->ensureRuntimeDirectories();
         $this->fallbackRedisToDatabase();
         $this->fallbackInvalidQueueConnectionToSync();
+        $this->bootCloudFolder();
         if (DockerSetupState::isDocker() && class_exists(\Illuminate\Support\Facades\Vite::class)) {
             \Illuminate\Support\Facades\Vite::useHotFile(storage_path('framework/vite.hot'));
         }
@@ -85,6 +86,27 @@ class AppServiceProvider extends ServiceProvider
                 ->line('Este link expira em '.$expire.' minutos.')
                 ->line('Se você não solicitou a redefinição de senha, nenhuma ação é necessária.');
         });
+    }
+
+    private function bootCloudFolder(): void
+    {
+        if (! is_dir(base_path('cloud'))) {
+            return;
+        }
+
+        $bootstrap = base_path('cloud/bootstrap.php');
+        if (! is_file($bootstrap)) {
+            return;
+        }
+
+        try {
+            $register = require $bootstrap;
+            if (is_callable($register)) {
+                $register($this->app);
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     private function ensureRuntimeDirectories(): void

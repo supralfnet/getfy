@@ -18,7 +18,17 @@ class StorageMigrateController extends Controller
     public function __invoke(Request $request): JsonResponse
     {
         $tenantId = $request->user()->tenant_id;
-        $provider = Setting::get('storage_provider', 'local', $tenantId);
+        $cloudMode = (bool) config('getfy.cloud_mode', false);
+        $r2EnvKey = (string) env('R2_ACCESS_KEY_ID', '');
+        $r2EnvSecret = (string) env('R2_SECRET_ACCESS_KEY', '');
+        $r2EnvBucket = (string) env('R2_BUCKET', '');
+        $r2EnvEndpoint = (string) env('R2_ENDPOINT', '');
+        $r2EnvConfigured = $r2EnvKey !== '' && $r2EnvSecret !== '' && $r2EnvBucket !== '' && $r2EnvEndpoint !== '';
+
+        $provider = Setting::get('storage_provider', null, $tenantId);
+        if ($provider === null || $provider === '') {
+            $provider = ($cloudMode && $r2EnvConfigured) ? 'r2' : 'local';
+        }
 
         if ($provider === 'local' || $provider === '' || ! in_array($provider, ['s3', 'wasabi', 'r2'], true)) {
             return response()->json([

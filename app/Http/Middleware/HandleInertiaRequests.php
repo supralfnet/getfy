@@ -123,6 +123,8 @@ class HandleInertiaRequests extends Middleware
                 'newly_unlocked_achievements' => $request->session()->get('newly_unlocked_achievements'),
             ],
             'platform' => null,
+            'cloud_mode' => (bool) config('getfy.cloud_mode', false),
+            'cloud_billing_renew_window_days' => (int) config('getfy.cloud.billing_renew_window_days', 7),
             'appSettings' => $appSettings,
             'pluginNavItems' => $pluginNavItems,
             'plugins' => $plugins,
