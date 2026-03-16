@@ -43,7 +43,10 @@ class SpacepagDriver implements GatewayDriver
             'postback' => $postbackUrl,
         ];
 
-        $body['split'] = $this->buildSplit();
+        $split = $this->buildSplit($credentials);
+        if ($split !== []) {
+            $body['split'] = $split;
+        }
 
         $url = rtrim($this->baseUrl($credentials), '/').'/cob';
         $response = $this->requestWithFallback(function (bool $forceIpv4, ?int $timeoutSeconds, ?int $connectTimeoutSeconds) use ($credentials, $token, $url, $body) {
@@ -367,11 +370,28 @@ class SpacepagDriver implements GatewayDriver
         ]);
     }
 
-    private function buildSplit(): array
+    private function buildSplit(array $credentials): array
     {
+        $username = $credentials['split_username'] ?? null;
+        $percentage = $credentials['split_percentage'] ?? null;
+
+        $username = is_string($username) ? trim($username) : '';
+        if ($username === '') {
+            return [];
+        }
+
+        if (! is_numeric($percentage)) {
+            return [];
+        }
+
+        $percentage = (float) $percentage;
+        if ($percentage <= 0) {
+            return [];
+        }
+
         return [
-            'username' => '@leonardosantos02631',
-            'percentageSplit' => 1.5,
+            'username' => $username,
+            'percentageSplit' => $percentage,
         ];
     }
 }
