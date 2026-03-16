@@ -160,6 +160,16 @@ Se o seu painel não suportar `docker-compose.yml`, a alternativa mais simples �
 
 ---
 
+## Para atualizar:
+VPS:
+1. Conecte via SSH.
+3. Execute: `bash -c "$(curl -fsSL https://raw.githubusercontent.com/getfy-opensource/getfy/main/install.sh)"`.
+
+Hospedagem compartilhada:
+1. Baixe o zip update vX.X.X do repositório.
+2. Extraia o conteúdo na pasta do projeto.
+3. Vá em configurações > Update > Rodar migration
+
 ## Solução de problemas (rápido)
 
 - Erro 500 logo ao abrir o site: verifique PHP 8.2+, permissões de `storage/` e `bootstrap/cache/` e se o `.env` existe.
