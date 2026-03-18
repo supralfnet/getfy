@@ -18,6 +18,7 @@ use App\Jobs\DispatchWebhookJob;
 use App\Models\Webhook;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\URL;
 
 class WebhookEventSubscriber
@@ -56,12 +57,37 @@ class WebhookEventSubscriber
 
         $payload = $this->serializeEventPayload($event);
         $payload = $this->enrichPayload($event, $payload);
+        $dispatchSync = $this->shouldDispatchSync();
 
         foreach ($webhooks as $webhook) {
             if ($webhook->listensTo($eventClass) && $webhook->shouldFireForProduct($productId)) {
-                DispatchWebhookJob::dispatch($webhook->id, $eventClass, $payload);
+                if ($dispatchSync) {
+                    (new DispatchWebhookJob($webhook->id, $eventClass, $payload))->handle();
+                } else {
+                    DispatchWebhookJob::dispatch($webhook->id, $eventClass, $payload);
+                }
             }
         }
+    }
+
+    private function shouldDispatchSync(): bool
+    {
+        if (config('queue.default') === 'sync') {
+            return true;
+        }
+
+        $heartbeat = Cache::get('queue_heartbeat');
+        if (! is_string($heartbeat) || $heartbeat === '') {
+            return true;
+        }
+
+        try {
+            $last = \Illuminate\Support\Carbon::parse($heartbeat);
+        } catch (\Throwable) {
+            return true;
+        }
+
+        return $last->lt(now()->subMinutes(3));
     }
 
     /**

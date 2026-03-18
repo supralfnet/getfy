@@ -121,7 +121,7 @@ function buildQuery(overrides = {}) {
 
 function applyFilters(overrides = {}) {
     router.get('/vendas', buildQuery(overrides), {
-        preserveState: false,
+        preserveState: true,
         preserveScroll: true,
         replace: true,
     });
@@ -307,11 +307,17 @@ onUnmounted(() => {
 });
 
 function onSearchInput() {
+    const q = (filterForm.value.q ?? '').trim();
+    if (q !== '' && q.length < 3) {
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = null;
+        return;
+    }
     if (searchTimer) clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
         applyFilters();
         searchTimer = null;
-    }, 350);
+    }, 600);
 }
 
 function onFilterChange() {
@@ -603,7 +609,91 @@ const exportXlsUrl = computed(() => {
         </div>
 
         <!-- Tabela de vendas -->
-        <div class="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-700 dark:bg-zinc-800/80">
+        <div class="sm:hidden space-y-3">
+            <div
+                v-for="v in vendasList"
+                :key="v.id"
+                class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800/60 dark:hover:bg-zinc-700/80"
+                role="button"
+                tabindex="0"
+                @click="openDetail(v)"
+                @keydown.enter.prevent="openDetail(v)"
+                @keydown.space.prevent="openDetail(v)"
+            >
+                <div class="flex items-center justify-between gap-3">
+                    <div class="min-w-0">
+                        <p class="text-[11px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                            {{ new Date(v.created_at).toLocaleDateString('pt-BR') }}
+                        </p>
+                        <p class="mt-1 break-words text-sm font-semibold leading-snug text-zinc-900 dark:text-white">
+                            {{ v.product_display_name ?? v.product?.name ?? '–' }}
+                        </p>
+                    </div>
+                    <div class="shrink-0" :data-venda-menu="v.id" @click.stop>
+                        <button
+                            type="button"
+                            class="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+                            aria-label="Abrir menu"
+                            aria-expanded="openMenuId === v.id"
+                            @click="toggleMenu(v.id, $event)"
+                        >
+                            <MoreVertical class="h-4 w-4" />
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mt-4 rounded-lg bg-zinc-50/60 p-3 dark:bg-zinc-900/30">
+                    <div class="grid grid-cols-2 gap-x-4 gap-y-3">
+                        <div class="min-w-0">
+                            <p class="text-[11px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                                Cliente
+                            </p>
+                            <p class="mt-1 break-words text-sm font-medium leading-snug text-zinc-900 dark:text-white">
+                                {{ v.user?.name ?? '–' }}
+                            </p>
+                            <p class="mt-0.5 break-words text-xs leading-snug text-zinc-500 dark:text-zinc-400">
+                                {{ v.email ?? v.user?.email ?? '–' }}
+                            </p>
+                        </div>
+                        <div class="min-w-0 text-right">
+                            <p class="text-[11px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                                Status
+                            </p>
+                            <div class="mt-1 flex flex-col items-end gap-1">
+                                <span
+                                    :class="[
+                                        'inline-flex w-fit rounded-full px-2 py-0.5 text-xs font-medium',
+                                        statusBadgeClass(v.status),
+                                    ]"
+                                >
+                                    {{ statusBadgeLabel(v.status) }}
+                                </span>
+                                <span class="break-words text-xs leading-snug text-zinc-500 dark:text-zinc-400">
+                                    {{ v.gateway_label ?? '–' }}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="col-span-2 flex items-end justify-between gap-3">
+                            <p class="text-[11px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                                Valor líquido
+                            </p>
+                            <p class="text-base font-semibold tabular-nums text-zinc-900 dark:text-white">
+                                {{ formatBRL(v.amount) }}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                v-if="!vendasList.length"
+                class="rounded-xl border border-zinc-200 bg-white px-4 py-10 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-400"
+            >
+                Nenhuma venda encontrada.
+            </div>
+        </div>
+
+        <div class="hidden overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-700 dark:bg-zinc-800/80 sm:block">
             <table class="min-w-full divide-y divide-zinc-200 dark:divide-zinc-700">
                 <thead class="bg-zinc-50 dark:bg-zinc-800">
                     <tr>

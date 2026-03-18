@@ -17,6 +17,24 @@ const assinaturasList = computed(() => props.assinaturas?.data ?? (Array.isArray
 function formatBRL(value) {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value ?? 0);
 }
+
+function statusBadgeClass(status) {
+    const map = {
+        active: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
+        past_due: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+        cancelled: 'bg-zinc-100 text-zinc-700 dark:bg-zinc-700/50 dark:text-zinc-300',
+    };
+    return map[status] ?? 'bg-zinc-100 text-zinc-700 dark:bg-zinc-700/50 dark:text-zinc-300';
+}
+
+function statusBadgeLabel(status) {
+    const map = {
+        active: 'Ativa',
+        past_due: 'Em atraso',
+        cancelled: 'Cancelada',
+    };
+    return map[status] ?? status ?? '–';
+}
 </script>
 
 <template>
@@ -65,7 +83,68 @@ function formatBRL(value) {
                     Lista de assinaturas ativas. Os lembretes de renovação são enviados por e-mail antes do vencimento.
                 </p>
             </div>
-            <div v-if="assinaturasList.length > 0" class="overflow-x-auto">
+
+            <div v-if="assinaturasList.length > 0" class="sm:hidden p-4">
+                <div class="space-y-3">
+                    <div
+                        v-for="s in assinaturasList"
+                        :key="s.id"
+                        class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-800/60"
+                    >
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="min-w-0">
+                                <p class="break-words text-sm font-semibold leading-snug text-zinc-900 dark:text-white">
+                                    {{ s.user?.name || '—' }}
+                                </p>
+                                <p class="mt-0.5 break-words text-xs leading-snug text-zinc-500 dark:text-zinc-400">
+                                    {{ s.user?.email || '—' }}
+                                </p>
+                            </div>
+                            <span
+                                :class="[
+                                    'inline-flex shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium',
+                                    statusBadgeClass(s.status),
+                                ]"
+                            >
+                                {{ statusBadgeLabel(s.status) }}
+                            </span>
+                        </div>
+
+                        <div class="mt-4 rounded-lg bg-zinc-50/60 p-3 dark:bg-zinc-900/30">
+                            <div class="space-y-3">
+                                <div class="grid grid-cols-2 gap-x-4 gap-y-1">
+                                    <p class="text-[11px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                                        Produto
+                                    </p>
+                                    <p class="text-[11px] text-right font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                                        Plano
+                                    </p>
+                                    <p class="break-words text-sm font-medium leading-snug text-zinc-900 dark:text-white">
+                                        {{ s.product?.name || '—' }}
+                                    </p>
+                                    <p class="break-words text-right text-sm font-medium leading-snug text-zinc-900 dark:text-white">
+                                        {{ s.plan?.name || '—' }}
+                                    </p>
+                                    <p class="col-span-2 break-words text-xs text-zinc-500 dark:text-zinc-400">
+                                        {{ s.plan?.interval_label || s.plan?.interval || '—' }}
+                                    </p>
+                                </div>
+
+                                <div class="flex items-end justify-between gap-3">
+                                    <p class="text-[11px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                                        Renova em
+                                    </p>
+                                    <p class="text-sm font-semibold tabular-nums text-zinc-900 dark:text-white">
+                                        {{ s.current_period_end || '—' }}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="assinaturasList.length > 0" class="hidden overflow-x-auto sm:block">
                 <table class="w-full text-left text-sm">
                     <thead class="border-b border-zinc-200 bg-zinc-50/80 text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-400">
                         <tr>
@@ -87,8 +166,13 @@ function formatBRL(value) {
                             </td>
                             <td class="px-4 py-3">{{ s.current_period_end || '—' }}</td>
                             <td class="px-4 py-3">
-                                <span class="inline-flex rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
-                                    {{ s.status }}
+                                <span
+                                    :class="[
+                                        'inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium',
+                                        statusBadgeClass(s.status),
+                                    ]"
+                                >
+                                    {{ statusBadgeLabel(s.status) }}
                                 </span>
                             </td>
                         </tr>

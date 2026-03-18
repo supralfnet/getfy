@@ -80,15 +80,21 @@ function buildQuery(overrides = {}) {
 }
 
 function applyQuery(overrides = {}) {
-    router.get('/produtos/alunos', buildQuery(overrides), { preserveState: false, preserveScroll: true, replace: true });
+    router.get('/produtos/alunos', buildQuery(overrides), { preserveState: true, preserveScroll: true, replace: true });
 }
 
 function onSearchInput() {
+    const q = (search.value ?? '').trim();
+    if (q !== '' && q.length < 3) {
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = null;
+        return;
+    }
     if (searchTimer) clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
         applyQuery();
         searchTimer = null;
-    }, 350);
+    }, 600);
 }
 
 function toggleProductFilter(id) {
@@ -344,6 +350,11 @@ onUnmounted(() => {
                     <input
                         v-model="search"
                         type="text"
+                        name="alunos_search"
+                        autocomplete="off"
+                        autocapitalize="off"
+                        autocorrect="off"
+                        spellcheck="false"
                         class="w-full rounded-xl border border-zinc-200 bg-white py-2 pl-10 pr-10 text-sm text-zinc-900 shadow-sm transition focus:border-[var(--color-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
                         placeholder="Buscar aluno por nome ou e-mail..."
                         @input="onSearchInput"
@@ -424,8 +435,40 @@ onUnmounted(() => {
         </div>
 
         <!-- Tabela de alunos -->
+        <div v-if="alunosList.length" class="sm:hidden space-y-3">
+            <div
+                v-for="a in alunosList"
+                :key="a.id"
+                class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800/60 dark:hover:bg-zinc-700/80"
+                role="button"
+                tabindex="0"
+                @click="openDetail(a)"
+                @keydown.enter.prevent="openDetail(a)"
+                @keydown.space.prevent="openDetail(a)"
+            >
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <p class="break-words text-sm font-semibold leading-snug text-zinc-900 dark:text-white">
+                            {{ a.name }}
+                        </p>
+                        <p class="mt-0.5 break-words text-xs leading-snug text-zinc-500 dark:text-zinc-400">
+                            {{ a.email }}
+                        </p>
+                    </div>
+                    <div class="shrink-0 text-right">
+                        <p class="text-[11px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                            Produtos
+                        </p>
+                        <p class="mt-1 text-base font-semibold tabular-nums text-zinc-900 dark:text-white">
+                            {{ a.products_count ?? 0 }}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div
-            class="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-700 dark:bg-zinc-800/80"
+            class="hidden overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-700 dark:bg-zinc-800/80 sm:block"
         >
             <table class="min-w-full divide-y divide-zinc-200 dark:divide-zinc-700">
                 <thead class="bg-zinc-50 dark:bg-zinc-800">
@@ -465,6 +508,13 @@ onUnmounted(() => {
                     </tr>
                 </tbody>
             </table>
+        </div>
+
+        <div
+            v-if="!alunosList.length"
+            class="sm:hidden rounded-xl border border-zinc-200 bg-white px-4 py-10 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-400"
+        >
+            Nenhum aluno com acesso ainda.
         </div>
 
         <!-- Paginação -->
@@ -528,6 +578,11 @@ onUnmounted(() => {
                             <input
                                 v-model="novoAlunoForm.name"
                                 type="text"
+                                name="novo_aluno_name"
+                                autocomplete="off"
+                                autocapitalize="words"
+                                autocorrect="off"
+                                spellcheck="false"
                                 class="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
                                 placeholder="Nome do aluno"
                             />
@@ -539,6 +594,11 @@ onUnmounted(() => {
                             <input
                                 v-model="novoAlunoForm.email"
                                 type="email"
+                                name="novo_aluno_email"
+                                autocomplete="off"
+                                autocapitalize="off"
+                                autocorrect="off"
+                                spellcheck="false"
                                 class="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
                                 placeholder="email@exemplo.com"
                             />
@@ -550,6 +610,8 @@ onUnmounted(() => {
                             <input
                                 v-model="novoAlunoForm.password"
                                 type="password"
+                                name="novo_aluno_password"
+                                autocomplete="new-password"
                                 class="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
                                 placeholder="Mínimo 6 caracteres"
                             />

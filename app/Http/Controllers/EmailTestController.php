@@ -138,6 +138,11 @@ class EmailTestController extends Controller
     protected function smtpConnectionCheck(string $host, int $port, ?string $encryption, ?string $username, ?string $password): void
     {
         $timeout = 10;
+        if ($port === 465 && $encryption === 'tls') {
+            $encryption = 'ssl';
+        } elseif ($port === 587 && $encryption === 'ssl') {
+            $encryption = 'tls';
+        }
         // for SSL, connect using ssl:// wrapper so TLS handshake happens on connect
         if ($encryption === 'ssl') {
             $remote = sprintf('ssl://%s:%d', $host, $port);
@@ -146,7 +151,17 @@ class EmailTestController extends Controller
         }
         $errno = null;
         $errstr = null;
-        $context = stream_context_create();
+        $verifyPeer = (bool) config('mail.mailers.smtp.verify_peer', true);
+        $context = stream_context_create([
+            'ssl' => [
+                'verify_peer' => $verifyPeer,
+                'verify_peer_name' => $verifyPeer,
+                'allow_self_signed' => ! $verifyPeer,
+                'crypto_method' => STREAM_CRYPTO_METHOD_TLS_CLIENT
+                    | STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT
+                    | STREAM_CRYPTO_METHOD_TLSv1_1_CLIENT,
+            ],
+        ]);
         $socket = @stream_socket_client($remote, $errno, $errstr, $timeout, STREAM_CLIENT_CONNECT, $context);
         if (! $socket) {
             throw new \RuntimeException('Não foi possível conectar ao servidor SMTP: '.$errstr.' ('.$errno.')');
@@ -165,9 +180,9 @@ class EmailTestController extends Controller
                 $r = $this->smtpGetResponse($socket);
                 if (strpos($r, '220') === 0) {
                     // enable crypto
-                    $crypto_enabled = @stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
+                    $crypto_enabled = @stream_socket_enable_crypto($socket, true);
                     if (! $crypto_enabled) {
-                        throw new \RuntimeException('Falha ao iniciar STARTTLS.');
+                        throw new \RuntimeException('Falha ao iniciar STARTTLS. Verifique porta/encriptação e certificados TLS no servidor.');
                     }
                     // EHLO again after TLS to refresh capabilities
                     $this->smtpSend($socket, "EHLO localhost\r\n");
@@ -257,4 +272,3 @@ class EmailTestController extends Controller
         return $response;
     }
 }
-

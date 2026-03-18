@@ -1,6 +1,27 @@
 # Changelog
 
 
+## [1.0.3] - 18-03-2026
+
+### Fixed
+
+- Ajusta a responsividade da listagem de vendas (/vendas) no mobile.
+- Melhora o alinhamento visual dos cards da listagem de vendas no mobile.
+- Ajusta a responsividade da listagem de assinaturas no mobile.
+- Ajusta a responsividade da listagem de alunos (/produtos/alunos) no mobile.
+- Evita autofill de e-mail no campo de busca de alunos (/produtos/alunos).
+- Evita disparo automático da busca ao digitar (mín. 3 caracteres) em /vendas e /produtos/alunos.
+- Evita autofill do e-mail ao cadastrar novo aluno (Produtos e Área de Membros).
+- Corrige mensagens de validação para não exibir chaves (ex.: validation.unique).
+- Ajusta rolagem horizontal das abas de configurações no mobile.
+- Ajusta responsividade da seção de Storage em Configurações no mobile.
+- Oculta a aba Traduções em Configurações no mobile.
+- Corrige link do e-mail de acesso para não exigir senha na área de membros.
+- Corrige reenvio do e-mail de acesso pela lista de vendas quando já enviado.
+- Exibe indicador de token salvo em webhooks e melhora edição sem expor o valor.
+- Garante disparo e logs de webhooks em eventos reais mesmo sem worker de fila.
+- Ajusta teste de SMTP (STARTTLS) para respeitar verificação TLS e portas comuns.
+
 ## [1.0.2] - 18-03-2026
 
 ### Added

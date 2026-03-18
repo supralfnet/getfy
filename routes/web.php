@@ -3,6 +3,9 @@
 use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\ResetPasswordController;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 
 // Storage: servir arquivos de storage/app/public (sem symlink) — deve ser uma das primeiras rotas
@@ -158,6 +161,67 @@ Route::middleware(['auth', 'role:admin|infoprodutor'])->group(function () {
     Route::post('/painel/notifications/mark-read', [\App\Http\Controllers\PanelNotificationsController::class, 'markReadBatch'])->name('panel.notifications.mark-read-batch');
     Route::post('/painel/notifications/mark-all-read', [\App\Http\Controllers\PanelNotificationsController::class, 'markAllRead'])->name('panel.notifications.mark-all-read');
     Route::delete('/painel/notifications', [\App\Http\Controllers\PanelNotificationsController::class, 'clearAll'])->name('panel.notifications.clear-all');
+    Route::get('/cloud/billing/status', function (Request $request) {
+        if (! config('getfy.cloud_mode')) {
+            abort(404);
+        }
+
+        $token = (string) env('GETFY_CLOUD_INSTALL_TOKEN', '');
+        $base = (string) config('getfy.cloud.orch_api_base_url', '');
+        if ($token === '' || $base === '') {
+            return response()->json(['enabled' => false]);
+        }
+
+        $cacheMinutes = max(1, (int) config('getfy.cloud.billing_cache_minutes', 10));
+        $cacheKey = 'cloud:billing:status';
+        $lastGoodKey = 'cloud:billing:status:last_good';
+
+        try {
+            $payload = Cache::remember($cacheKey, now()->addMinutes($cacheMinutes), function () use ($base, $token, $lastGoodKey) {
+                $url = $base.'/v1/public/billing/status';
+                $hostHeader = parse_url($url, PHP_URL_HOST);
+                $headers = array_filter([
+                    'Authorization' => 'Bearer '.$token,
+                    'Host' => $hostHeader ?: null,
+                ]);
+
+                $res = Http::timeout(10)
+                    ->connectTimeout(5)
+                    ->withHeaders($headers)
+                    ->get($url);
+
+                if ($res->status() === 401) {
+                    return ['enabled' => false];
+                }
+
+                if (! $res->successful()) {
+                    throw new \RuntimeException('Orchestrator retornou HTTP '.$res->status().'.');
+                }
+
+                $json = $res->json();
+                if (! is_array($json)) {
+                    throw new \RuntimeException('Resposta inválida do Orchestrator.');
+                }
+
+                $payload = ['enabled' => true] + $json;
+                $payload['portalUrl'] = 'http://getfy.cloud/login';
+                Cache::put($lastGoodKey, $payload, now()->addMinutes(60));
+
+                return $payload;
+            });
+
+            return response()->json(is_array($payload) ? $payload : ['enabled' => false]);
+        } catch (\Throwable $e) {
+            $last = Cache::get($lastGoodKey);
+            if (is_array($last) && isset($last['enabled'])) {
+                return response()->json($last);
+            }
+
+            report($e);
+
+            return response()->json(['enabled' => false]);
+        }
+    })->name('cloud.billing.status')->middleware('throttle:60,1');
     Route::get('/conquistas', [\App\Http\Controllers\ConquistasController::class, 'index'])->name('conquistas.index');
     Route::get('/meu-perfil', [\App\Http\Controllers\ProfileController::class, 'index'])->name('profile.index');
     Route::post('/meu-perfil', [\App\Http\Controllers\ProfileController::class, 'update'])->name('profile.update');
@@ -334,6 +398,7 @@ Route::prefix('m/{slug}')->where(['slug' => '[a-zA-Z0-9]{6,16}'])->middleware('m
     Route::post('login-without-password', [\App\Http\Controllers\MemberAreaLoginController::class, 'loginWithoutPassword'])->name('member-area.login.without-password')->middleware(['guest', 'throttle:5,1']);
     Route::get('esqueci-senha', [\App\Http\Controllers\MemberAreaForgotPasswordController::class, 'showLinkRequestForm'])->name('member-area.password.request')->middleware('guest');
     Route::post('esqueci-senha', [\App\Http\Controllers\MemberAreaForgotPasswordController::class, 'sendResetLinkEmail'])->name('member-area.password.email')->middleware(['guest', 'throttle:6,1']);
+    Route::get('access', [\App\Http\Controllers\MemberAreaLoginController::class, 'magicAccess'])->name('member-area.magic-access')->middleware('signed');
 
     Route::middleware(['member.area.access'])->group(function () {
         Route::get('/', [\App\Http\Controllers\MemberAreaAppController::class, 'show'])->name('member-area-app.show');
@@ -371,6 +436,7 @@ Route::middleware(['web', 'member.area.resolve.by.host'])->group(function () {
 
         return response()->file($path, ['Content-Type' => 'application/javascript']);
     })->name('member-area-app.sw.host');
+    Route::get('access', [\App\Http\Controllers\MemberAreaLoginController::class, 'magicAccessHost'])->name('member-area.magic-access.host')->middleware('signed');
     // Login da área de membros por host: não registramos GET/POST /login aqui para não sobrescrever
     // o login da plataforma. O Auth\LoginController delega para MemberAreaLoginController quando
     // o host for de área de membros (subdomínio ou domínio próprio).

@@ -20,7 +20,7 @@ class AccessEmailService
     /**
      * Send access email for an order. Returns true on success, false otherwise.
      */
-    public function sendForOrder(Order $order): bool
+    public function sendForOrder(Order $order, bool $force = false): bool
     {
         Log::info('AccessEmailService: tentando enviar e-mail de acesso.', ['order_id' => $order->id]);
 
@@ -72,7 +72,9 @@ class AccessEmailService
         }
 
         $customerName = $order->user?->name ?? explode('@', $customerEmail)[0] ?? 'Cliente';
-        $linkAcesso = $this->resolveLinkAcesso($product);
+        $linkAcesso = $order->user && $product->type === Product::TYPE_AREA_MEMBROS
+            ? $this->resolveMemberAreaMagicLink($product, $order->user)
+            : $this->resolveLinkAcesso($product);
 
         if (config('app.debug') && $product->type === Product::TYPE_AREA_MEMBROS) {
             Log::debug('AccessEmailService: link_acesso', ['order_id' => $order->id, 'link' => $linkAcesso]);
@@ -113,7 +115,7 @@ class AccessEmailService
         if ($isRenewal) {
             // Renovação: enviar e-mail de sucesso (não de acesso). Evitar duplicado.
             $cacheKey = 'access_email_sent.' . $order->id;
-            if (! Cache::add($cacheKey, true, now()->addHours(24))) {
+            if (! $force && ! Cache::add($cacheKey, true, now()->addHours(24))) {
                 Log::info('AccessEmailService: e-mail de renovação já enviado (evitando duplicado).', [
                     'order_id' => $order->id,
                     'product_type' => $product->type,
@@ -127,7 +129,7 @@ class AccessEmailService
         } else {
             // Compra única / nova assinatura: evitar envio duplicado (webhook pode disparar OrderCompleted mais de uma vez)
             $cacheKey = 'access_email_sent.' . $order->id;
-            if (! Cache::add($cacheKey, true, now()->addHours(1))) {
+            if (! $force && ! Cache::add($cacheKey, true, now()->addHours(1))) {
                 Log::info('AccessEmailService: e-mail de acesso já enviado (evitando duplicado).', [
                     'order_id' => $order->id,
                     'product_type' => $product->type,
@@ -256,7 +258,9 @@ class AccessEmailService
         }
 
         $customerName = $user->name ?: explode('@', $customerEmail)[0] ?? 'Cliente';
-        $linkAcesso = $this->resolveLinkAcesso($product);
+        $linkAcesso = $product->type === Product::TYPE_AREA_MEMBROS
+            ? $this->resolveMemberAreaMagicLink($product, $user)
+            : $this->resolveLinkAcesso($product);
 
         $replace = [
             '{nome_cliente}' => $customerName,
@@ -319,6 +323,46 @@ class AccessEmailService
         }
 
         return '';
+    }
+
+    private function resolveMemberAreaMagicLink(Product $product, User $user): string
+    {
+        $base = $this->memberAreaResolver->baseUrlForProduct($product);
+        $expiresAt = now()->addDays(7);
+        $appUrl = rtrim((string) config('app.url'), '/');
+        $appScheme = parse_url($appUrl, PHP_URL_SCHEME) ?: null;
+
+        $useHostAccess = true;
+        $path = parse_url($base, PHP_URL_PATH);
+        if (is_string($path) && str_starts_with(trim($path, '/'), 'm/')) {
+            $useHostAccess = false;
+        }
+
+        $originalRoot = $appUrl;
+        $originalScheme = $appScheme;
+
+        try {
+            if ($useHostAccess) {
+                $scheme = parse_url($base, PHP_URL_SCHEME);
+                if (is_string($scheme) && $scheme !== '') {
+                    \Illuminate\Support\Facades\URL::forceScheme($scheme);
+                }
+                \Illuminate\Support\Facades\URL::forceRootUrl(rtrim($base, '/'));
+                return \Illuminate\Support\Facades\URL::temporarySignedRoute('member-area.magic-access.host', $expiresAt, [
+                    'u' => $user->id,
+                ]);
+            }
+
+            return \Illuminate\Support\Facades\URL::temporarySignedRoute('member-area.magic-access', $expiresAt, [
+                'slug' => $product->checkout_slug,
+                'u' => $user->id,
+            ]);
+        } finally {
+            \Illuminate\Support\Facades\URL::forceRootUrl($originalRoot);
+            if (is_string($originalScheme) && $originalScheme !== '') {
+                \Illuminate\Support\Facades\URL::forceScheme($originalScheme);
+            }
+        }
     }
 
     private function prependLogoToBody(string $logoUrl, string $bodyHtml): string

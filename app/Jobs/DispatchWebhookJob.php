@@ -69,7 +69,9 @@ class DispatchWebhookJob implements ShouldQueue
             ]);
 
             if (! $success) {
-                $this->release($this->backoff);
+                if ($this->job) {
+                    $this->release($this->backoff);
+                }
             }
         } catch (\Throwable $e) {
             WebhookLog::create([
@@ -83,7 +85,9 @@ class DispatchWebhookJob implements ShouldQueue
                 'error_message' => $e->getMessage(),
                 'source' => 'job',
             ]);
-            $this->release($this->backoff);
+            if ($this->job) {
+                $this->release($this->backoff);
+            }
         }
     }
 }

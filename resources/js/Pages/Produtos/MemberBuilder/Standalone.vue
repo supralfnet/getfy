@@ -3363,6 +3363,11 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                             <input
                                 v-model="newAlunoForm.email"
                                 type="email"
+                                name="new_aluno_email"
+                                autocomplete="off"
+                                autocapitalize="off"
+                                autocorrect="off"
+                                spellcheck="false"
                                 :class="inputClass"
                                 class="rounded-xl"
                                 placeholder="email@exemplo.com"

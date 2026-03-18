@@ -23,6 +23,7 @@ class WebhookController extends Controller
                 'id' => $w->id,
                 'name' => $w->name,
                 'url' => $w->url,
+                'has_bearer_token' => (bool) $w->bearer_token,
                 'events' => $w->events ?? [],
                 'is_active' => $w->is_active,
                 'products' => $w->products->map(fn ($p) => [
@@ -81,6 +82,7 @@ class WebhookController extends Controller
                 'id' => $webhook->id,
                 'name' => $webhook->name,
                 'url' => $webhook->url,
+                'has_bearer_token' => (bool) $webhook->bearer_token,
                 'events' => $webhook->events ?? [],
                 'is_active' => $webhook->is_active,
                 'products' => $webhook->products->map(fn ($p) => [
@@ -129,6 +131,7 @@ class WebhookController extends Controller
                 'id' => $webhook->id,
                 'name' => $webhook->name,
                 'url' => $webhook->url,
+                'has_bearer_token' => (bool) $webhook->bearer_token,
                 'events' => $webhook->events ?? [],
                 'is_active' => $webhook->is_active,
                 'products' => $webhook->products->map(fn ($p) => [

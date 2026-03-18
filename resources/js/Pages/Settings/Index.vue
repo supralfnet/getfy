@@ -53,6 +53,8 @@ const activeTab = ref('email');
 if (typeof window !== 'undefined') {
     const t = new URLSearchParams(window.location.search).get('tab');
     if (allowedTabs.includes(t)) activeTab.value = t;
+    const isMobile = window.matchMedia && window.matchMedia('(max-width: 639px)').matches;
+    if (isMobile && activeTab.value === 'traducoes') activeTab.value = 'email';
 }
 
 const defaultTranslations = () => ({
@@ -606,27 +608,30 @@ const selectClass =
         </div>
 
         <!-- Tabs pill style -->
-        <nav
-            class="inline-flex rounded-xl bg-zinc-100/80 p-1 dark:bg-zinc-800/80"
-            aria-label="Abas de configurações"
-        >
-            <button
-                v-for="tab in tabs"
-                :key="tab.id"
-                type="button"
-                :aria-current="activeTab === tab.id ? 'page' : undefined"
-                :class="[
-                    'flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200',
-                    activeTab === tab.id
-                        ? 'bg-white text-[var(--color-primary)] shadow-sm dark:bg-zinc-700 dark:text-[var(--color-primary)]'
-                        : 'text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white',
-                ]"
-                @click="activeTab = tab.id"
+        <div class="w-full overflow-x-auto [-webkit-overflow-scrolling:touch]">
+            <nav
+                class="inline-flex w-max rounded-xl bg-zinc-100/80 p-1 dark:bg-zinc-800/80"
+                aria-label="Abas de configurações"
             >
-                <component :is="tab.icon" class="h-4 w-4 shrink-0" aria-hidden="true" />
-                {{ tab.label }}
-            </button>
-        </nav>
+                <button
+                    v-for="tab in tabs"
+                    :key="tab.id"
+                    type="button"
+                    :aria-current="activeTab === tab.id ? 'page' : undefined"
+                    :class="[
+                        'items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200',
+                        tab.id === 'traducoes' ? 'hidden sm:flex' : 'flex',
+                        activeTab === tab.id
+                            ? 'bg-white text-[var(--color-primary)] shadow-sm dark:bg-zinc-700 dark:text-[var(--color-primary)]'
+                            : 'text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white',
+                    ]"
+                    @click="activeTab = tab.id"
+                >
+                    <component :is="tab.icon" class="h-4 w-4 shrink-0" aria-hidden="true" />
+                    {{ tab.label }}
+                </button>
+            </nav>
+        </div>
 
         <form v-show="activeTab !== 'update' && activeTab !== 'cron'" class="w-full max-w-full space-y-6" @submit.prevent="form.put('/configuracoes')">
             <!-- Aba E-MAIL -->
@@ -793,11 +798,11 @@ const selectClass =
                                     </div>
                                 </template>
 
-                                <div class="flex flex-wrap items-center gap-3 pt-2">
+                                <div class="flex flex-col items-stretch gap-3 pt-2 sm:flex-row sm:items-center">
                                     <button
                                         type="button"
                                         :disabled="storageTestLoading"
-                                        class="inline-flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-600 transition hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:border-[var(--color-primary)]"
+                                        class="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-600 transition hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:border-[var(--color-primary)] sm:w-auto"
                                         @click="testStorageConnection"
                                     >
                                         <RefreshCw class="h-4 w-4" :class="{ 'animate-spin': storageTestLoading }" />
@@ -807,7 +812,7 @@ const selectClass =
                                         v-if="isStorageRemote"
                                         type="button"
                                         :disabled="storageMigrateLoading || !canMigrateStorage"
-                                        class="inline-flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-600 transition hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:border-[var(--color-primary)]"
+                                        class="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-600 transition hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:border-[var(--color-primary)] sm:w-auto"
                                         title="Salve as configurações antes de transferir."
                                         @click="migrateStorageToRemote"
                                     >
@@ -817,7 +822,7 @@ const selectClass =
                                     <p
                                         v-if="storageTestResult.status"
                                         :class="[
-                                            'text-sm',
+                                            'text-sm sm:ml-2',
                                             storageTestResult.status === 'success'
                                                 ? 'text-emerald-600 dark:text-emerald-400'
                                                 : 'text-red-600 dark:text-red-400',
@@ -846,7 +851,7 @@ const selectClass =
                 leave-from-class="opacity-100"
                 leave-to-class="opacity-0"
             >
-                <div v-show="activeTab === 'traducoes'" class="space-y-6">
+                <div v-show="activeTab === 'traducoes'" class="hidden space-y-6 sm:block">
                     <section class="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-800/50">
                         <div class="border-b border-zinc-200 bg-zinc-50 px-6 py-5 dark:border-zinc-700 dark:bg-zinc-800">
                             <h2 class="text-base font-semibold text-zinc-900 dark:text-white">Checkout – textos por idioma</h2>

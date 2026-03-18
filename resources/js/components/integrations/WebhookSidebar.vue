@@ -424,6 +424,12 @@ function truncateUrl(url, max = 40) {
                                                     • Todos os produtos
                                                 </span>
                                                 <span
+                                                    v-if="w.has_bearer_token"
+                                                    class="ml-1 rounded-md bg-zinc-200 px-1.5 py-0.5 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200"
+                                                >
+                                                    Token
+                                                </span>
+                                                <span
                                                     v-if="!w.is_active"
                                                     class="ml-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
                                                 >
@@ -643,6 +649,12 @@ function truncateUrl(url, max = 40) {
                                     autocomplete="new-password"
                                     class="block w-full rounded-xl bg-white px-4 py-2.5 text-zinc-900 shadow-sm ring-1 ring-zinc-200 placeholder-zinc-400 transition focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:ring-offset-0 dark:bg-zinc-800 dark:ring-zinc-600 dark:text-white dark:placeholder-zinc-500"
                                 />
+                                <p
+                                    v-if="editingWebhook?.has_bearer_token && !form.bearer_token"
+                                    class="mt-1 text-xs text-zinc-500 dark:text-zinc-400"
+                                >
+                                    Token já está salvo. Deixe em branco para manter.
+                                </p>
                             </div>
                             <div>
                                 <label
