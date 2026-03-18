@@ -59,10 +59,15 @@ class ApiCheckoutController extends Controller
 
         $paymentService = app(PaymentService::class);
         $tenantId = $app->tenant_id;
-        $firstPixGateway = $paymentService->getFirstAvailableGatewayForMethod($tenantId, 'pix', $productModel, $pg);
-        $firstPixAutoGateway = $paymentService->getFirstAvailableGatewayForMethod($tenantId, 'pix_auto', $productModel, $pg);
-        $firstCardGateway = $paymentService->getFirstAvailableGatewayForMethod($tenantId, 'card', $productModel, $pg);
-        $firstBoletoGateway = $paymentService->getFirstAvailableGatewayForMethod($tenantId, 'boleto', $productModel, $pg);
+        $pixEnabled = ! empty($pg['pix']);
+        $pixAutoEnabled = ! empty($pg['pix_auto']);
+        $cardEnabled = ! empty($pg['card']);
+        $boletoEnabled = ! empty($pg['boleto']);
+
+        $firstPixGateway = $pixEnabled ? $paymentService->getFirstAvailableGatewayForMethod($tenantId, 'pix', $productModel, $pg) : null;
+        $firstPixAutoGateway = $pixAutoEnabled ? $paymentService->getFirstAvailableGatewayForMethod($tenantId, 'pix_auto', $productModel, $pg) : null;
+        $firstCardGateway = $cardEnabled ? $paymentService->getFirstAvailableGatewayForMethod($tenantId, 'card', $productModel, $pg) : null;
+        $firstBoletoGateway = $boletoEnabled ? $paymentService->getFirstAvailableGatewayForMethod($tenantId, 'boleto', $productModel, $pg) : null;
 
         $availableMethods = [];
         if ($firstPixGateway !== null) {
@@ -81,12 +86,7 @@ class ApiCheckoutController extends Controller
             abort(422, 'Nenhum método de pagamento configurado para esta aplicação.');
         }
 
-        $cardGatewaySlug = null;
-        if (! empty($pg['card'])) {
-            $cardGatewaySlug = (string) $pg['card'];
-        } elseif ($firstCardGateway !== null) {
-            $cardGatewaySlug = (string) $firstCardGateway;
-        }
+        $cardGatewaySlug = $cardEnabled ? (string) $pg['card'] : null;
         $cardStripePublishableKey = '';
         $cardStripeSandbox = false;
         $cardStripeLinkEnabled = true;
@@ -161,6 +161,18 @@ class ApiCheckoutController extends Controller
         $gatewayConfig = is_array($gatewayConfig) ? $gatewayConfig : ApiApplication::defaultPaymentGateways();
         $pg = $gatewayConfig;
         $method = $validated['payment_method'];
+        if ($method === 'pix' && empty($pg['pix'])) {
+            return redirect()->back()->with('error', 'Método de pagamento não disponível.');
+        }
+        if ($method === 'pix_auto' && empty($pg['pix_auto'])) {
+            return redirect()->back()->with('error', 'Método de pagamento não disponível.');
+        }
+        if ($method === 'card' && empty($pg['card'])) {
+            return redirect()->back()->with('error', 'Método de pagamento não disponível.');
+        }
+        if ($method === 'boleto' && empty($pg['boleto'])) {
+            return redirect()->back()->with('error', 'Método de pagamento não disponível.');
+        }
         $customer = $session->customer;
         $email = $customer['email'] ?? '';
         $name = trim((string) ($customer['name'] ?? ''));
@@ -196,6 +208,12 @@ class ApiCheckoutController extends Controller
             if ($plan && $plan->product_id === $product->id) {
                 [$periodStart, $periodEnd] = $plan->getCurrentPeriod();
             }
+        }
+
+        $paymentService = app(PaymentService::class);
+        $availableGateway = $paymentService->getFirstAvailableGatewayForMethod($tenantId, $method, $product, $gatewayConfig);
+        if ($availableGateway === null) {
+            return redirect()->back()->with('error', 'Método de pagamento não disponível.');
         }
 
         $order = Order::create([
@@ -234,12 +252,6 @@ class ApiCheckoutController extends Controller
         }
 
         $session->update(['order_id' => $order->id]);
-        $paymentService = app(PaymentService::class);
-        $availableGateway = $paymentService->getFirstAvailableGatewayForMethod($tenantId, $method, $product, $gatewayConfig);
-        if ($availableGateway === null) {
-            $order->delete();
-            return redirect()->back()->with('error', 'Método de pagamento não disponível.');
-        }
 
         if ($method === 'pix' || $method === 'pix_auto') {
             $pixGatewayConfig = $gatewayConfig;
