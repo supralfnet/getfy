@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue';
 import { CreditCard } from 'lucide-vue-next';
+import CajuPayD0Badge from '@/components/settings/CajuPayD0Badge.vue';
 import {
     TooltipRoot,
     TooltipTrigger,
@@ -52,6 +53,8 @@ const countries = computed(() => {
 });
 
 const hasMultipleCountries = computed(() => countries.value != null);
+
+const isCajuPay = computed(() => props.gateway.slug === 'cajupay');
 </script>
 
 <template>
@@ -132,8 +135,11 @@ const hasMultipleCountries = computed(() => countries.value != null);
             />
         </div>
         <div class="min-w-0 flex-1">
-            <div class="font-medium text-zinc-900 dark:text-white">
-                {{ gateway.name }}
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="font-medium text-zinc-900 dark:text-white">
+                    {{ gateway.name }}
+                </span>
+                <CajuPayD0Badge v-if="isCajuPay" />
             </div>
             <div class="mt-1 flex flex-wrap items-center gap-1.5">
                 <span

@@ -8,6 +8,22 @@ return [
     |--------------------------------------------------------------------------
     */
     'gateways' => [
+        'cajupay' => [
+            'slug' => 'cajupay',
+            'name' => 'CajuPay',
+            'image' => 'images/gateways/cajupay.png',
+            'methods' => ['pix'],
+            'scope' => 'national',
+            'country' => 'br',
+            'country_name' => 'Brasil',
+            'country_flag' => 'brasil.png',
+            'signup_url' => 'https://cajupay.com.br',
+            'driver' => \App\Gateways\CajuPay\CajuPayDriver::class,
+            'credential_keys' => [
+                ['key' => 'public_key', 'label' => 'Chave pública', 'type' => 'text'],
+                ['key' => 'secret_key', 'label' => 'Chave secreta', 'type' => 'password'],
+            ],
+        ],
         'spacepag' => [
             'slug' => 'spacepag',
             'name' => 'Spacepag',
@@ -129,7 +145,7 @@ return [
     |--------------------------------------------------------------------------
     */
     'default_order' => [
-        'pix' => ['spacepag', 'efi', 'mercadopago', 'pushinpay', 'asaas'],
+        'pix' => ['cajupay', 'spacepag', 'efi', 'mercadopago', 'pushinpay', 'asaas'],
         'card' => ['efi', 'stripe', 'mercadopago', 'asaas'],
         'boleto' => ['efi', 'mercadopago', 'asaas'],
         'pix_auto' => ['efi', 'pushinpay'],

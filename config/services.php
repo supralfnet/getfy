@@ -42,4 +42,14 @@ return [
         'submit_url' => env('PLUGIN_STORE_SUBMIT_URL'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | CajuPay (PIX): autenticação por X-API-Key / X-API-Secret (credenciais no painel do tenant).
+    | URL base opcional para homologação ou proxy.
+    |--------------------------------------------------------------------------
+    */
+    'cajupay' => [
+        'base_url' => rtrim(env('CAJUPAY_API_BASE_URL', 'https://api.cajupay.com.br'), '/'),
+    ],
+
 ];

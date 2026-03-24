@@ -117,21 +117,21 @@ return new class extends Migration
                     continue;
                 }
                 $indexesToRestore = $this->dropIndexesContainingColumn($table, $column);
-                if (! Schema::hasColumn($table, $column . '_new')) {
-                    Schema::table($table, function (Blueprint $t) use ($table, $column) {
-                        $t->char($column . '_new', 36)->nullable()->after($column);
+                if (! Schema::hasColumn($table, $column.'_new')) {
+                    Schema::table($table, function (Blueprint $t) use ($column) {
+                        $t->char($column.'_new', 36)->nullable()->after($column);
                     });
                 }
                 DB::table($mappingTable)->orderBy('old_id')->chunk(100, function ($mapRows) use ($table, $column) {
                     foreach ($mapRows as $m) {
-                        DB::table($table)->where($column, $m->old_id)->update([$column . '_new' => $m->new_id]);
+                        DB::table($table)->where($column, $m->old_id)->update([$column.'_new' => $m->new_id]);
                     }
                 });
                 Schema::table($table, function (Blueprint $t) use ($column) {
                     $t->dropColumn($column);
                 });
                 $nullable = isset(self::NULLABLE_PRODUCT_COLUMNS[$table]) && in_array($column, self::NULLABLE_PRODUCT_COLUMNS[$table], true);
-                DB::statement("ALTER TABLE {$table} CHANGE {$column}_new {$column} CHAR(36) " . ($nullable ? 'NULL' : 'NOT NULL'));
+                DB::statement("ALTER TABLE {$table} CHANGE {$column}_new {$column} CHAR(36) ".($nullable ? 'NULL' : 'NOT NULL'));
                 $this->restoreIndexes($table, $indexesToRestore);
             }
         }
@@ -188,6 +188,7 @@ return new class extends Migration
                 DB::statement("ALTER TABLE `{$table}` DROP INDEX `{$indexName}`");
             }
         }
+
         return $toRestore;
     }
 
@@ -213,14 +214,14 @@ return new class extends Migration
                 continue;
             }
 
-            $baseName = 'tmp_fk_' . $fkCol;
+            $baseName = 'tmp_fk_'.$fkCol;
             $candidate = $baseName;
             $i = 1;
             while (DB::selectOne(
                 'SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1',
                 [$schema, $table, $candidate]
             )) {
-                $candidate = $baseName . '_' . $i;
+                $candidate = $baseName.'_'.$i;
                 $i++;
             }
             DB::statement("ALTER TABLE `{$table}` ADD INDEX `{$candidate}` (`{$fkCol}`)");

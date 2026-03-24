@@ -74,4 +74,20 @@ class Order extends Model
             ? $query->whereNull('tenant_id')
             : $query->where('tenant_id', $tenantId);
     }
+
+    /**
+     * Attach buyer to main product and order bump products (same rules as public checkout after payment).
+     */
+    public function grantPurchasedProductAccessToBuyer(): void
+    {
+        $this->loadMissing('orderItems.product', 'product');
+        if ($this->product) {
+            $this->product->users()->syncWithoutDetaching([$this->user_id]);
+        }
+        foreach ($this->orderItems as $item) {
+            if ($item->product) {
+                $item->product->users()->syncWithoutDetaching([$this->user_id]);
+            }
+        }
+    }
 }

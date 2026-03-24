@@ -640,6 +640,12 @@ function truncateUrl(url, max = 40) {
                                         >(opcional)</span
                                     >
                                 </label>
+                                <p
+                                    class="mb-1.5 text-xs text-zinc-500 dark:text-zinc-400"
+                                >
+                                    Por segurança, o valor do token salvo não é
+                                    exibido neste campo.
+                                </p>
                                 <input
                                     v-model="form.bearer_token"
                                     type="password"

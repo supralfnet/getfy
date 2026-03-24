@@ -77,6 +77,23 @@ class GatewaysController extends Controller
             $webhookUrl = Route::has($webhookRoute) ? route($webhookRoute) : null;
         }
 
+        $usesOauth = ! empty($gateway['oauth']);
+        $oauthRoutePrefix = 'gateways.'.$slug.'.oauth.';
+        $oauthStartUrl = $usesOauth && Route::has($oauthRoutePrefix.'start')
+            ? route($oauthRoutePrefix.'start')
+            : null;
+        $oauthDisconnectUrl = $usesOauth && Route::has($oauthRoutePrefix.'disconnect')
+            ? route($oauthRoutePrefix.'disconnect')
+            : null;
+        $oauthCallbackUrl = $usesOauth && Route::has($oauthRoutePrefix.'callback')
+            ? route($oauthRoutePrefix.'callback', [], true)
+            : null;
+        $oauthConnected = $usesOauth
+            && ($credential?->is_connected ?? false)
+            && trim((string) ($decrypted['access_token'] ?? '')) !== '';
+
+        $oauthClientConfigured = false;
+
         $payload = [
             'slug' => $gateway['slug'],
             'name' => $gateway['name'],
@@ -92,6 +109,12 @@ class GatewaysController extends Controller
             'certificate_configured' => $certificateConfigured,
             'certificate_filename' => $certificateFilename && is_string($certificateFilename) ? $certificateFilename : null,
             'webhook_url' => $webhookUrl,
+            'uses_oauth' => $usesOauth,
+            'oauth_client_configured' => $oauthClientConfigured,
+            'oauth_start_url' => $oauthStartUrl,
+            'oauth_disconnect_url' => $oauthDisconnectUrl,
+            'oauth_callback_url' => $oauthCallbackUrl,
+            'oauth_connected' => $oauthConnected,
         ];
 
         return response()->json($payload)->header('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -134,6 +157,8 @@ class GatewaysController extends Controller
             ['tenant_id' => $tenantId]
         );
 
+        $existingCredentials = $credential->exists ? $credential->getDecryptedCredentials() : [];
+
         $credentials = [];
         foreach ($credentialKeys as $keyDef) {
             $key = $keyDef['key'] ?? '';
@@ -150,10 +175,17 @@ class GatewaysController extends Controller
         }
 
         // Preserve existing certificate_path when nenhum novo arquivo foi enviado
-        if ($credential->exists) {
-            $existingCredentials = $credential->getDecryptedCredentials();
-            if (!empty($existingCredentials['certificate_path'])) {
-                $credentials['certificate_path'] = $existingCredentials['certificate_path'];
+        if (! empty($existingCredentials['certificate_path'])) {
+            $credentials['certificate_path'] = $existingCredentials['certificate_path'];
+        }
+
+        if (! empty($gateway['oauth'])) {
+            foreach (['access_token', 'refresh_token', 'token_expires_at'] as $oauthKey) {
+                if (! isset($credentials[$oauthKey]) || (string) ($credentials[$oauthKey] ?? '') === '') {
+                    if (array_key_exists($oauthKey, $existingCredentials)) {
+                        $credentials[$oauthKey] = $existingCredentials[$oauthKey];
+                    }
+                }
             }
         }
 

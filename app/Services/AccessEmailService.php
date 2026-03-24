@@ -138,6 +138,7 @@ class AccessEmailService
 
                 return true;
             }
+            $bodyHtmlBeforeReplace = $bodyHtml;
             $replace = [
                 '{nome_cliente}' => $customerName,
                 '{nome_produto}' => $product->name,
@@ -149,6 +150,12 @@ class AccessEmailService
             $bodyHtml = str_replace(array_keys($replace), array_values($replace), $bodyHtml);
             if (! empty($template['logo_url'])) {
                 $bodyHtml = $this->prependLogoToBody($template['logo_url'], $bodyHtml);
+            }
+            if ($product->type === Product::TYPE_AREA_MEMBROS
+                && $senha !== ''
+                && ! str_contains($bodyHtmlBeforeReplace, '{senha}')
+            ) {
+                $bodyHtml = $this->appendMemberAreaPasswordCredentialsBlock($bodyHtml, $customerEmail, $senha);
             }
         }
 
@@ -370,6 +377,18 @@ class AccessEmailService
         $img = '<div style="text-align:center;margin-bottom:20px"><img src="'.e($logoUrl).'" alt="Logo" style="max-height:60px;width:auto" /></div>';
 
         return $img.$bodyHtml;
+    }
+
+    private function appendMemberAreaPasswordCredentialsBlock(string $bodyHtml, string $email, string $password): string
+    {
+        $block = '<div style="margin:24px 0 0;padding:20px;background:#fffbeb;border:1px solid #f59e0b;border-radius:8px;">'
+            .'<p style="margin:0 0 10px;font-size:14px;line-height:1.5;color:#92400e;"><strong>Guarde seus dados de acesso</strong></p>'
+            .'<p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#78350f;">O botão de acesso acima entra automaticamente na sua conta. Se você sair ou usar outro aparelho, faça login na área de membros com:</p>'
+            .'<p style="margin:0 0 10px;font-size:14px;color:#0f172a;"><strong>E-mail:</strong> '.e($email).'</p>'
+            .'<p style="margin:0;font-size:15px;color:#0f172a;font-family:Consolas,\'Courier New\',monospace;font-weight:600;letter-spacing:0.02em;word-break:break-all;"><strong>Senha:</strong> '.e($password).'</p>'
+            .'</div>';
+
+        return $bodyHtml.$block;
     }
 
     private function buildRenewalSuccessBody(string $customerName, string $productName): string

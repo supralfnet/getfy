@@ -1,8 +1,9 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import axios from 'axios';
 import Button from '@/components/ui/Button.vue';
 import { X, ExternalLink, Copy, Check } from 'lucide-vue-next';
+import CajuPayD0Badge from '@/components/settings/CajuPayD0Badge.vue';
 
 const props = defineProps({
     open: { type: Boolean, default: false },
@@ -28,6 +29,7 @@ const testSuccess = ref(null);
 const credentialValues = ref({});
 const certificateFile = ref(null);
 const webhookCopied = ref(false);
+const disconnecting = ref(false);
 
 async function copyWebhookUrl() {
     const url = gateway.value?.webhook_url;
@@ -200,6 +202,50 @@ async function save() {
 function close() {
     emit('close');
 }
+
+async function disconnectOAuth() {
+    const url = gateway.value?.oauth_disconnect_url;
+    if (!url) return;
+    disconnecting.value = true;
+    testMessage.value = null;
+    try {
+        await axios.post(
+            url,
+            {},
+            { headers: { 'X-XSRF-TOKEN': getCsrfToken(), Accept: 'application/json' } }
+        );
+        testSuccess.value = true;
+        testMessage.value = 'Conta desconectada.';
+        emit('saved');
+        const slug = gateway.value?.slug;
+        if (slug) {
+            const { data } = await axios.get(
+                `/configuracoes/gateways/${encodeURIComponent(slug)}`,
+                { params: { t: Date.now() } }
+            );
+            gateway.value = data;
+        }
+    } catch (err) {
+        testSuccess.value = false;
+        testMessage.value =
+            err.response?.data?.message || 'Não foi possível desconectar.';
+    } finally {
+        disconnecting.value = false;
+    }
+}
+
+const hasManualCredentialFields = computed(() => {
+    const keys = gateway.value?.credential_keys || [];
+    return keys.length > 0 || !!gateway.value?.certificate_key;
+});
+
+const canTestConnection = computed(() => {
+    if (!gateway.value) return false;
+    if (gateway.value.uses_oauth && !gateway.value.oauth_connected) {
+        return false;
+    }
+    return true;
+});
 </script>
 
 <template>
@@ -219,11 +265,14 @@ function close() {
                 class="relative flex h-full w-full max-w-md flex-col rounded-l-2xl border-l border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
             >
                 <div
-                    class="flex items-center justify-between rounded-tl-2xl border-b border-zinc-200 px-4 py-4 dark:border-zinc-700"
+                    class="flex items-center justify-between gap-2 rounded-tl-2xl border-b border-zinc-200 px-4 py-4 dark:border-zinc-700"
                 >
-                    <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">
-                        {{ gateway?.name || 'Gateway' }}
-                    </h2>
+                    <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">
+                            {{ gateway?.name || 'Gateway' }}
+                        </h2>
+                        <CajuPayD0Badge v-if="gateway?.slug === 'cajupay'" />
+                    </div>
                     <button
                         type="button"
                         class="rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
@@ -281,10 +330,13 @@ function close() {
                         </div>
                     </div>
 
-                    <h3 class="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                    <h3
+                        v-if="hasManualCredentialFields"
+                        class="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+                    >
                         Credenciais
                     </h3>
-                    <div class="space-y-4">
+                    <div v-if="hasManualCredentialFields" class="space-y-4">
                         <div
                             v-for="field in (gateway.credential_keys || [])"
                             :key="field.key"
@@ -331,6 +383,75 @@ function close() {
                         </div>
                     </div>
 
+                    <div
+                        v-if="gateway.uses_oauth"
+                        class="mb-6 mt-6 rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-600 dark:bg-zinc-800/50"
+                    >
+                        <h3 class="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                            Conectar via OAuth
+                        </h3>
+                        <div class="mb-4 flex flex-col gap-2">
+                            <Button
+                                v-if="gateway.oauth_start_url && !gateway.oauth_connected"
+                                as="a"
+                                :href="gateway.oauth_start_url"
+                                variant="primary"
+                                class="w-full justify-center text-center no-underline sm:w-full"
+                            >
+                                <ExternalLink class="h-4 w-4 shrink-0" aria-hidden="true" />
+                                Conectar
+                            </Button>
+                            <p
+                                v-if="gateway.oauth_start_url && !gateway.oauth_connected"
+                                class="text-center text-[11px] text-zinc-500 dark:text-zinc-400"
+                            >
+                                Abre o fluxo de autorização do gateway e, após o consentimento, salva o token no Getfy.
+                            </p>
+                            <Button
+                                v-if="gateway.oauth_disconnect_url && gateway.oauth_connected"
+                                type="button"
+                                variant="outline"
+                                class="w-full justify-center sm:w-auto"
+                                :disabled="disconnecting"
+                                @click="disconnectOAuth"
+                            >
+                                {{ disconnecting ? 'Desconectando...' : 'Desconectar' }}
+                            </Button>
+                        </div>
+                        <p
+                            v-if="!gateway.oauth_client_configured"
+                            class="mb-3 text-xs text-amber-700 dark:text-amber-300"
+                        >
+                            A identificação do aplicativo OAuth ainda não está configurada neste servidor (variáveis de ambiente ou registro do gateway).
+                        </p>
+                        <template v-else>
+                            <p
+                                v-if="gateway.oauth_callback_url && !gateway.oauth_connected"
+                                class="mb-3 text-xs text-zinc-600 dark:text-zinc-400"
+                            >
+                                Na primeira conexão, cadastre a URL de callback no painel do integrador, se solicitado.
+                            </p>
+                            <p
+                                v-if="gateway.oauth_callback_url"
+                                class="mb-1 text-xs font-medium text-zinc-600 dark:text-zinc-400"
+                            >
+                                URL de redirecionamento (callback)
+                            </p>
+                            <p
+                                v-if="gateway.oauth_callback_url"
+                                class="mb-3 break-all rounded-lg bg-white px-2 py-1.5 font-mono text-[11px] text-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+                            >
+                                {{ gateway.oauth_callback_url }}
+                            </p>
+                        </template>
+                        <p
+                            v-if="gateway.oauth_connected"
+                            class="text-xs text-emerald-700 dark:text-emerald-300"
+                        >
+                            Conta autorizada. Teste a conexão abaixo ou desconecte.
+                        </p>
+                    </div>
+
                     <p
                         v-if="testMessage"
                         :class="[
@@ -346,12 +467,13 @@ function close() {
                     <div class="mt-6 flex flex-col gap-2">
                         <Button
                             variant="outline"
-                            :disabled="testing"
+                            :disabled="testing || !canTestConnection"
                             @click="testConnection"
                         >
                             {{ testing ? 'Testando...' : 'Testar conexão' }}
                         </Button>
                         <Button
+                            v-if="hasManualCredentialFields"
                             :disabled="saving"
                             @click="save"
                         >

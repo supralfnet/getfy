@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\ApiApplication;
 use App\Models\ApiCheckoutSession;
 use App\Models\Product;
+use App\Models\ProductOffer;
+use App\Models\SubscriptionPlan;
+use App\Support\ApiHostedCheckoutPricing;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -40,6 +43,32 @@ class CheckoutSessionsController extends Controller
             $product = Product::where('id', $validated['product_id'])->where('tenant_id', $tenantId)->first();
             if (! $product) {
                 return response()->json(['message' => 'Produto não encontrado.'], 422);
+            }
+            $offerId = isset($validated['product_offer_id']) ? (int) $validated['product_offer_id'] : null;
+            $planId = isset($validated['subscription_plan_id']) ? (int) $validated['subscription_plan_id'] : null;
+            if ($offerId) {
+                if (! ProductOffer::where('id', $offerId)->where('product_id', $product->id)->exists()) {
+                    return response()->json(['message' => 'Oferta inválida para este produto.'], 422);
+                }
+            }
+            if ($planId) {
+                if (! SubscriptionPlan::where('id', $planId)->where('product_id', $product->id)->exists()) {
+                    return response()->json(['message' => 'Plano inválido para este produto.'], 422);
+                }
+            }
+            $expectedBrl = ApiHostedCheckoutPricing::expectedAmountBrl(
+                $tenantId,
+                (string) $validated['product_id'],
+                $offerId ?: null,
+                $planId ?: null,
+            );
+            if ($expectedBrl === null) {
+                return response()->json(['message' => 'Não foi possível validar o preço do produto.'], 422);
+            }
+            $requestCurrency = strtoupper((string) ($validated['currency'] ?? 'BRL'));
+            $requestedBrl = ApiHostedCheckoutPricing::amountToBrl((float) $validated['amount'], $requestCurrency);
+            if (abs($expectedBrl - $requestedBrl) > 0.02) {
+                return response()->json(['message' => 'Valor não corresponde ao preço do produto.'], 422);
             }
         }
 

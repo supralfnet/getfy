@@ -337,7 +337,6 @@ class ApiCheckoutController extends Controller
                 'amount' => $amount,
                 'position' => 0,
             ]);
-            $product->users()->syncWithoutDetaching([$user->id]);
         }
 
         $session->update(['order_id' => $order->id]);
@@ -581,6 +580,7 @@ class ApiCheckoutController extends Controller
                 $status = $result['status'] ?? 'pending';
                 if ($status === 'paid' || $status === 'approved' || $status === 'completed') {
                     $order->update(['status' => 'completed']);
+                    $order->grantPurchasedProductAccessToBuyer();
                     event(new OrderCompleted($order));
                 }
                 if (isset($result['client_secret']) && ($result['client_secret'] ?? '') !== '') {

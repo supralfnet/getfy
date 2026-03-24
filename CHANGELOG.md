@@ -1,6 +1,36 @@
 # Changelog
 
 
+## [1.0.4] - 24-03-2026
+
+### Security
+
+- Remove o fluxo `manual` do checkout público: `payment_method` obrigatório e apenas `pix`, `card`, `boleto` ou `pix_auto`; pedidos já não podem ser concluídos sem gateway (bloqueio de requisições forjadas).
+- Ajusta o checkout Vue para não fazer fallback para método inválido e validar método antes do envio.
+- API (Checkout Pro e Payments): cessão de acesso ao produto só após confirmação de pagamento (webhook ou cartão aprovado); cartão síncrono continua a conceder acesso no momento da aprovação.
+- Área de membros: login sem senha não aceita contas com acesso ao painel (admin/infoprodutor), evitando escalação de sessão.
+- Sessões de checkout da API: validação do `amount` em relação ao preço do produto/oferta/plano quando há `product_id` (tolerância numérica); oferta e plano devem pertencer ao produto.
+- Webhooks: cancelamento, rejeição e reembolso exigem reconfirmação via API do gateway; política configurável em `config/webhooks.php` (`reconfirm_fail_policy`) — Mercado Pago com fail-closed por omissão quando a reconfirmação falha.
+- Refatora concessão de acesso pós-pagamento em `Order::grantPurchasedProductAccessToBuyer()` (incluindo itens do pedido).
+
+### Added
+
+- `config/webhooks.php` com política `reconfirm_fail_policy` e variáveis de ambiente associadas.
+- Testes de feature: checkout público (rejeição de `manual` e obrigatoriedade de `payment_method`) e reconfirmação em webhooks destrutivos.
+- Helper `createTestProduct()` na suíte de testes para SQLite (compatível com `products.id` inteiro em ambiente de testes).
+- Testes de feature `AccessEmailPasswordBlockTest` (Mail fake) para o bloco de credenciais e ausência de duplicação.
+- Testes de feature: `payment_intent.succeeded` (Stripe) em `ProcessPaymentWebhook` e prop `has_bearer_token` na página Integrações.
+- Gateway **CajuPay** (PIX, Brasil): novo provedor com `CajuPayDriver` — autenticação **X-API-Key** / **X-API-Secret** (par gerado no painel CajuPay, API / Chaves), campos **chave pública** e **chave secreta** em Integrações → Gateways; criação de cobrança PIX (`POST /api/payments/pix` com cabeçalho `Idempotency-Key`), consulta de status em `GET /api/payments` para polling do checkout e reconfirmação em fluxos de webhook; teste de conexão via `GET /api/wallet/balance`; registrado em `config/gateways.php` como primeiro gateway na lista e na ordem padrão de redundância PIX (`default_order`); imagem `public/images/gateways/cajupay.png`; URL base opcional `CAJUPAY_API_BASE_URL` no `.env`.
+- Integrações (gateways): no card e no painel lateral da CajuPay, badge **D+0** ao lado do nome com tooltip sobre liquidação no mesmo dia útil.
+
+### Fixed
+
+- Testes em SQLite ao criar produtos sem conflito de tipo de `id` (mass assignment / UUID em ambiente diferente do MySQL).
+- E-mail de acesso à área de membros passa a exibir de forma destacada o e-mail e a senha provisória: o template padrão inclui um bloco "Guarde seus dados de acesso" com `{email_cliente}` e `{senha}`; pedidos com template personalizado sem o placeholder `{senha}` recebem o mesmo bloco ao final do HTML (sem duplicar quando o template já usa `{senha}`).
+- Webhook de pagamento Stripe (`payment_intent.succeeded`): `ProcessPaymentWebhook` trata o mesmo fluxo de pagamento confirmado que `order.paid`, disparando conclusão do pedido e `OrderCompleted` após reconfirmação na API.
+- Página Integrações: lista de webhooks inclui `has_bearer_token` (como na API JSON), permitindo exibir o aviso de token já salvo após reload; texto de ajuda no formulário explica que o token não é exibido por segurança.
+- Logs em `ProcessPaymentWebhook` para pedido não encontrado, lock concorrente, pedido já concluído e reconfirmação de gateway diferente de pago.
+
 ## [1.0.3] - 18-03-2026
 
 ### Fixed

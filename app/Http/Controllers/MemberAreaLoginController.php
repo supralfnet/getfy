@@ -80,7 +80,10 @@ class MemberAreaLoginController extends Controller
         }
         $request->validate(['email' => ['required', 'email']]);
         $user = User::where('email', $request->input('email'))->first();
-        if (! $user || ! $product->hasMemberAreaAccess($user)) {
+        if (! $user || $user->canAccessPanel()) {
+            return back()->withErrors(['email' => 'Credenciais inválidas.'])->onlyInput('email');
+        }
+        if (! $product->hasMemberAreaAccess($user)) {
             return back()->withErrors(['email' => 'Credenciais inválidas.'])->onlyInput('email');
         }
         Auth::login($user, $request->boolean('remember'));

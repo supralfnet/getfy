@@ -416,7 +416,7 @@ class CheckoutController extends Controller
             'subscription_plan_id' => ['nullable', 'exists:subscription_plans,id'],
             'order_bump_ids' => ['nullable', 'array'],
             'order_bump_ids.*' => ['integer', 'exists:product_order_bumps,id'],
-            'payment_method' => ['nullable', 'string', 'in:pix,card,boleto,pix_auto,manual'],
+            'payment_method' => ['required', 'string', 'in:pix,card,boleto,pix_auto'],
             'checkout_session_token' => ['nullable', 'string', 'max:64'],
             'idempotency_key' => ['nullable', 'string', 'max:128'],
             'display_currency' => ['nullable', 'string', 'in:BRL,USD,EUR'],
@@ -473,7 +473,7 @@ class CheckoutController extends Controller
             }
         }
 
-        $paymentMethod = $validated['payment_method'] ?? 'manual';
+        $paymentMethod = $validated['payment_method'];
 
         $productOfferId = $request->filled('product_offer_id') ? (int) $request->input('product_offer_id') : null;
         $subscriptionPlanId = $request->filled('subscription_plan_id') ? (int) $request->input('subscription_plan_id') : null;
@@ -1190,47 +1190,14 @@ class CheckoutController extends Controller
             }
         }
 
-        $order = $createOrderAndItems(array_merge($orderPayload, [
-            'status' => 'completed',
-            'gateway' => 'manual',
-        ]));
-        $updateCheckoutSession($order);
-        $order->load('orderItems');
-        $grantAccessForOrder($order);
-        if ($plan) {
-            $subscription = Subscription::create([
-                'tenant_id' => $tenantId,
-                'user_id' => $user->id,
-                'product_id' => $product->id,
-                'subscription_plan_id' => $plan->id,
-                'status' => Subscription::STATUS_ACTIVE,
-                'current_period_start' => $periodStart,
-                'current_period_end' => $periodEnd,
-            ]);
-            event(new SubscriptionCreated($subscription));
-        }
-        event(new OrderCompleted($order));
-
-        $config = $this->getOrderCheckoutConfigForProcess($order, $product, $offer, $plan);
-        $upsell = $config['upsell'] ?? [];
-        if (! empty($upsell['enabled']) && ! empty($upsell['products']) && is_array($upsell['products'])) {
-            $upsellToken = Str::random(64);
-            Cache::put('upsell_token.' . $upsellToken, [
-                'order_id' => $order->id,
-                'gateway' => 'manual',
-            ], now()->addMinutes(60));
-            return $this->idempotencyReturn($idempotencyKey, redirect()->to(route('checkout.upsell', ['token' => $upsellToken]))->with('success', 'Compra concluída.'));
+        if ($request->expectsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
+            return response()->json([
+                'message' => 'Método de pagamento inválido ou não disponível.',
+                'errors' => ['payment_method' => ['Selecione um método de pagamento válido.']],
+            ], 422);
         }
 
-        $redirectUrl = $config['redirect_after_purchase'] ?? null;
-        if (! empty($redirectUrl) && is_string($redirectUrl)) {
-            return $this->idempotencyReturn($idempotencyKey, redirect()->away($redirectUrl)->with('success', 'Compra concluída.'));
-        }
-        if (auth()->check()) {
-            return $this->idempotencyReturn($idempotencyKey, redirect()->route('member-area.index')->with('success', 'Compra concluída. Acesso liberado.'));
-        }
-
-        return $this->idempotencyReturn($idempotencyKey, redirect()->route('login')->with('success', 'Compra concluída. Faça login para acessar.'));
+        return back()->withErrors(['payment_method' => 'Selecione um método de pagamento válido.']);
     }
 
     /**
@@ -1377,21 +1344,23 @@ class CheckoutController extends Controller
             return response()->json(['status' => 'not_found'], 404);
         }
 
-        if ($order->status === 'pending' && $order->gateway === 'efi' && ! empty($order->gateway_id)) {
+        if ($order->status === 'pending' && ! empty($order->gateway) && ! empty($order->gateway_id)) {
+            $gatewaySlug = (string) $order->gateway;
             try {
                 $credential = GatewayCredential::forTenant($order->tenant_id)
-                    ->where('gateway_slug', 'efi')
+                    ->where('gateway_slug', $gatewaySlug)
                     ->where('is_connected', true)
                     ->first();
                 if ($credential) {
                     $credentials = $credential->getDecryptedCredentials();
-                    $driver = GatewayRegistry::driver('efi');
-                    if ($driver && ! empty($credentials) && ! empty($credentials['certificate_path'] ?? '')) {
-                        $apiStatus = $driver->getTransactionStatus($order->gateway_id, $credentials);
+                    $driver = GatewayRegistry::driver($gatewaySlug);
+                    $efiNeedsCert = $gatewaySlug === 'efi' && empty($credentials['certificate_path'] ?? '');
+                    if ($driver && $credentials !== [] && ! $efiNeedsCert) {
+                        $apiStatus = $driver->getTransactionStatus((string) $order->gateway_id, $credentials);
                         if ($apiStatus === 'paid') {
                             ProcessPaymentWebhook::dispatchSync(
-                                'efi',
-                                $order->gateway_id,
+                                $gatewaySlug,
+                                (string) $order->gateway_id,
                                 'order.paid',
                                 'paid',
                                 ['source' => 'order_status_poll']
@@ -1401,8 +1370,9 @@ class CheckoutController extends Controller
                     }
                 }
             } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::debug('CheckoutController orderStatus: falha ao verificar PIX Efí', [
+                \Illuminate\Support\Facades\Log::debug('CheckoutController orderStatus: falha ao consultar status no gateway', [
                     'order_id' => $order->id,
+                    'gateway' => $gatewaySlug,
                     'error' => $e->getMessage(),
                 ]);
             }

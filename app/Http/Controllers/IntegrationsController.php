@@ -40,6 +40,7 @@ class IntegrationsController extends Controller
                 'id' => $w->id,
                 'name' => $w->name,
                 'url' => $w->url,
+                'has_bearer_token' => (bool) $w->bearer_token,
                 'events' => $w->events ?? [],
                 'is_active' => $w->is_active,
                 'products' => $w->products->map(fn ($p) => ['id' => $p->id, 'name' => $p->name])->values()->all(),

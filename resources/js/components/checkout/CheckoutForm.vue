@@ -123,7 +123,7 @@ function getDefaultCountryCode() {
 
 const form = useForm({
     product_id: props.productId,
-    payment_method: 'manual',
+    payment_method: '',
     email: '',
     name: '',
     cpf: '',
@@ -142,7 +142,7 @@ watch(
     () => props.availablePaymentMethods,
     (list) => {
         const methods = Array.isArray(list) ? list : [];
-        if (methods.length > 0 && (form.payment_method === 'manual' || !form.payment_method)) {
+        if (methods.length > 0 && (!form.payment_method || !methods.some((m) => m.id === form.payment_method))) {
             form.payment_method = methods[0].id;
         }
     },
@@ -943,7 +943,16 @@ async function getEfiPaymentToken() {
 
 function submit() {
     const methods = Array.isArray(props.availablePaymentMethods) ? props.availablePaymentMethods : [];
-    const paymentMethod = methods.some((m) => m.id === form.payment_method) ? form.payment_method : (methods[0]?.id ?? 'manual');
+    if (methods.length === 0) {
+        form.setError('payment_method', 'Nenhum método de pagamento disponível.');
+        return;
+    }
+    const paymentMethod = methods.some((m) => m.id === form.payment_method) ? form.payment_method : '';
+    if (!paymentMethod) {
+        form.setError('payment_method', 'Selecione um método de pagamento.');
+        return;
+    }
+    form.clearErrors('payment_method');
 
     if (paymentMethod === 'card') {
         cardFormError.value = '';

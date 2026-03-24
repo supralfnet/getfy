@@ -177,7 +177,6 @@ class PaymentsController extends Controller
                 'amount' => $orderAmount,
                 'position' => 0,
             ]);
-            $order->product->users()->syncWithoutDetaching([$order->user_id]);
         }
 
         $gatewayConfig = $app->payment_gateways ?? ApiApplication::defaultPaymentGateways();
@@ -326,6 +325,7 @@ class PaymentsController extends Controller
             $status = $result['status'] ?? 'pending';
             if ($status === 'paid' || $status === 'approved' || $status === 'completed') {
                 $order->update(['status' => 'completed']);
+                $order->grantPurchasedProductAccessToBuyer();
                 event(new OrderCompleted($order));
             }
 

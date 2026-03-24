@@ -47,30 +47,52 @@ class ProcessPaymentWebhook implements ShouldQueue
             ->first();
 
         if (! $order) {
+            Log::info('ProcessPaymentWebhook: order not found for gateway transaction', [
+                'gateway' => $this->gatewaySlug,
+                'transaction_id' => $this->transactionId,
+                'event' => $this->event,
+                'status' => $this->status,
+            ]);
+
             return;
         }
 
-        if ($this->event === 'order.paid' && $this->status === 'paid') {
+        if ($this->isConfirmedPaidWebhook()) {
             $lockKey = 'webhook_processing.' . $this->gatewaySlug . '.' . $this->transactionId;
             if (! Cache::add($lockKey, true, now()->addMinutes(5))) {
+                Log::info('ProcessPaymentWebhook: paid branch skipped (concurrent lock)', [
+                    'order_id' => $order->id,
+                    'gateway' => $this->gatewaySlug,
+                    'transaction_id' => $this->transactionId,
+                    'event' => $this->event,
+                ]);
+
                 return;
             }
             if ($order->status === 'completed') {
+                Log::info('ProcessPaymentWebhook: paid branch skipped (order already completed)', [
+                    'order_id' => $order->id,
+                    'gateway' => $this->gatewaySlug,
+                    'transaction_id' => $this->transactionId,
+                    'event' => $this->event,
+                ]);
+
                 return;
             }
-            if (! $this->reconfirmPaidWithGateway($order)) {
+            $apiStatus = $this->fetchGatewayTransactionStatus($order);
+            if ($apiStatus !== 'paid') {
+                Log::warning('ProcessPaymentWebhook: paid branch aborted (gateway reconfirm not paid)', [
+                    'order_id' => $order->id,
+                    'gateway' => $this->gatewaySlug,
+                    'transaction_id' => $this->transactionId,
+                    'event' => $this->event,
+                    'api_status' => $apiStatus,
+                ]);
+
                 return;
             }
             $order->update(['status' => 'completed']);
-            if ($order->product) {
-                $order->product->users()->syncWithoutDetaching([$order->user_id]);
-            }
-            $order->load('orderItems.product');
-            foreach ($order->orderItems as $item) {
-                if ($item->product) {
-                    $item->product->users()->syncWithoutDetaching([$order->user_id]);
-                }
-            }
+            $order->grantPurchasedProductAccessToBuyer();
             if ($order->subscription_plan_id) {
                 $plan = $order->subscriptionPlan;
                 if ($plan) {
@@ -119,6 +141,9 @@ class ProcessPaymentWebhook implements ShouldQueue
 
         if ($this->event === 'order.cancelled' && in_array($this->status, ['cancelled', 'canceled'], true)) {
             if ($order->status === 'pending') {
+                if (! $this->reconfirmGatewayStatus($order, ['cancelled'])) {
+                    return;
+                }
                 $order->update(['status' => 'cancelled']);
                 event(new OrderCancelled($order));
             }
@@ -126,6 +151,9 @@ class ProcessPaymentWebhook implements ShouldQueue
 
         if (in_array($this->event, ['order.rejected', 'payment.rejected'], true) && in_array($this->status, ['rejected', 'refused', 'failed'], true)) {
             if ($order->status === 'pending') {
+                if (! $this->reconfirmGatewayStatus($order, ['cancelled'])) {
+                    return;
+                }
                 $order->update(['status' => 'rejected']);
                 event(new OrderRejected($order));
             }
@@ -133,13 +161,34 @@ class ProcessPaymentWebhook implements ShouldQueue
 
         if (in_array($this->event, ['order.refunded', 'payment.refunded'], true) && in_array($this->status, ['refunded', 'refund'], true)) {
             if ($order->status === 'completed') {
+                if (! $this->reconfirmGatewayStatus($order, ['cancelled'])) {
+                    return;
+                }
                 $order->update(['status' => 'refunded']);
                 event(new OrderRefunded($order));
             }
         }
     }
 
-    private function reconfirmPaidWithGateway(Order $order): bool
+    /**
+     * Pagamento confirmado: formato comum `order.paid` ou Stripe `payment_intent.succeeded` (com status mapeado para paid).
+     */
+    private function isConfirmedPaidWebhook(): bool
+    {
+        if ($this->status !== 'paid') {
+            return false;
+        }
+        if ($this->event === 'order.paid') {
+            return true;
+        }
+        if ($this->gatewaySlug === 'stripe' && $this->event === 'payment_intent.succeeded') {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function fetchGatewayTransactionStatus(Order $order): ?string
     {
         $credential = GatewayCredential::forTenant($order->tenant_id)
             ->where('gateway_slug', $this->gatewaySlug)
@@ -147,22 +196,53 @@ class ProcessPaymentWebhook implements ShouldQueue
             ->first();
 
         if (! $credential) {
-            return false;
+            return null;
         }
 
         $driver = GatewayRegistry::driver($this->gatewaySlug);
         if (! $driver) {
-            return false;
+            return null;
         }
 
         $credentials = $credential->getDecryptedCredentials();
         if (empty($credentials)) {
-            return false;
+            return null;
         }
 
-        $apiStatus = $driver->getTransactionStatus($this->transactionId, $credentials);
+        return $driver->getTransactionStatus($this->transactionId, $credentials);
+    }
 
-        return $apiStatus === 'paid';
+    /**
+     * @param  list<string>  $expectedStatuses  e.g. ['cancelled'] — vários drivers mapeiam refund/rejected para cancelled
+     */
+    private function reconfirmGatewayStatus(Order $order, array $expectedStatuses): bool
+    {
+        $apiStatus = $this->fetchGatewayTransactionStatus($order);
+        if ($apiStatus === null) {
+            return $this->shouldAcceptUnconfirmedDestructive();
+        }
+
+        return in_array($apiStatus, $expectedStatuses, true);
+    }
+
+    private function shouldAcceptUnconfirmedDestructive(): bool
+    {
+        $perGateway = config("webhooks.reconfirm_fail_policy.{$this->gatewaySlug}");
+        if (is_string($perGateway) && $perGateway !== '') {
+            $accept = $perGateway === 'accept';
+        } else {
+            $accept = config('webhooks.reconfirm_fail_policy.default', 'accept') === 'accept';
+        }
+
+        if (! $accept) {
+            Log::warning('Webhook cancel/refund/reject skipped: reconfirmation unavailable (policy=reject)', [
+                'gateway' => $this->gatewaySlug,
+                'transaction_id' => $this->transactionId,
+                'event' => $this->event,
+            ]);
+        }
+
+        return $accept;
     }
 
     private function createEfiPixAutoCobrForNextPeriod(Order $order, Subscription $subscription, $plan): void
