@@ -10,6 +10,53 @@ import AsaasCard from './gateways/asaas/Card.vue';
 
 const STORAGE_KEY = 'checkout_draft';
 
+const UTM_PARAM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign'];
+
+function utmStorageKey() {
+    return `getfy_checkout_utm_${String(props.productId)}`;
+}
+
+function readUtmsFromUrl() {
+    if (typeof window === 'undefined') return {};
+    const p = new URLSearchParams(window.location.search);
+    const o = {};
+    UTM_PARAM_KEYS.forEach((k) => {
+        const v = p.get(k);
+        if (v != null && String(v).trim() !== '') o[k] = String(v).trim();
+    });
+    return o;
+}
+
+function mergeStoredUtms() {
+    if (typeof window === 'undefined') return {};
+    const fromUrl = readUtmsFromUrl();
+    let stored = {};
+    try {
+        const raw = sessionStorage.getItem(utmStorageKey());
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') stored = parsed;
+        }
+    } catch (_) {
+        stored = {};
+    }
+    return { ...stored, ...fromUrl };
+}
+
+function getUtmPayload() {
+    const m = mergeStoredUtms();
+    const out = {};
+    UTM_PARAM_KEYS.forEach((k) => {
+        if (m[k]) out[k] = m[k];
+    });
+    return out;
+}
+
+function appendUtms(payload) {
+    Object.assign(payload, getUtmPayload());
+    return payload;
+}
+
 function getCsrfToken() {
     const match = typeof document !== 'undefined' && document.cookie ? document.cookie.match(/XSRF-TOKEN=([^;]+)/) : null;
     if (match) {
@@ -279,6 +326,12 @@ function saveDraft() {
 
 onMounted(() => {
     loadDraft();
+    try {
+        const merged = mergeStoredUtms();
+        if (Object.keys(merged).length > 0 && typeof sessionStorage !== 'undefined') {
+            sessionStorage.setItem(utmStorageKey(), JSON.stringify(merged));
+        }
+    } catch (_) {}
     // Não forçar showEditForm = true aqui: o watch em form.payment_method já abre o form quando o usuário escolhe PIX/Boleto.
     // Se forçássemos aqui, ao carregar com draft salvo + primeiro método = boleto/pix, os dados "fixos" e o botão Editar dados nunca apareceriam.
 });
@@ -719,6 +772,7 @@ function submitCardWithMercadopagoFormData(formData) {
     if (Array.isArray(props.orderBumpIds) && props.orderBumpIds.length > 0) {
         payload.order_bump_ids = props.orderBumpIds.map((id) => (typeof id === 'number' ? id : parseInt(id, 10))).filter((n) => !Number.isNaN(n));
     }
+    appendUtms(payload);
     return axios.post('/checkout', payload, {
         headers: {
             'Accept': 'application/json',
@@ -1020,6 +1074,7 @@ function submit() {
             if (Array.isArray(props.orderBumpIds) && props.orderBumpIds.length > 0) {
                 payload.order_bump_ids = props.orderBumpIds.map((id) => (typeof id === 'number' ? id : parseInt(id, 10))).filter((n) => !Number.isNaN(n));
             }
+            appendUtms(payload);
             axios.post('/checkout', payload, {
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-XSRF-TOKEN': getCsrfToken() },
                 withCredentials: true,
@@ -1097,6 +1152,7 @@ function submit() {
                 if (Array.isArray(props.orderBumpIds) && props.orderBumpIds.length > 0) {
                     payload.order_bump_ids = props.orderBumpIds.map((id) => (typeof id === 'number' ? id : parseInt(id, 10))).filter((n) => !Number.isNaN(n));
                 }
+                appendUtms(payload);
                 return axios.post('/checkout', payload, {
                     headers: {
                         'Accept': 'application/json',
@@ -1184,6 +1240,7 @@ function submit() {
         payload.address_city = (form.address_city || '').trim();
         payload.address_state = (form.address_state || '').trim().slice(0, 2).toUpperCase();
     }
+    appendUtms(payload);
     form.transform(() => payload).post('/checkout');
 }
 </script>

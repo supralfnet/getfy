@@ -4,6 +4,7 @@ namespace App\Plugins;
 
 use App\Models\Plugin as PluginModel;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Artisan;
 
 class PluginRegistry
 {
@@ -133,6 +134,8 @@ class PluginRegistry
         } else {
             $plugin->update(['is_enabled' => true]);
         }
+        self::clearRouteCacheIfCached();
+
         return true;
     }
 
@@ -144,6 +147,8 @@ class PluginRegistry
         $plugin = PluginModel::find($slug);
         if ($plugin) {
             $plugin->update(['is_enabled' => false]);
+            self::clearRouteCacheIfCached();
+
             return true;
         }
         return false;
@@ -178,6 +183,8 @@ class PluginRegistry
         if (self::tableExists()) {
             PluginModel::where('slug', $slug)->delete();
         }
+        self::clearRouteCacheIfCached();
+
         return true;
     }
 
@@ -294,6 +301,8 @@ class PluginRegistry
                 'is_enabled' => true,
             ]
         );
+        self::clearRouteCacheIfCached();
+
         return true;
     }
 
@@ -323,6 +332,21 @@ class PluginRegistry
             return \Illuminate\Support\Facades\Schema::hasTable('plugins');
         } catch (\Throwable) {
             return false;
+        }
+    }
+
+    /**
+     * Rotas de plugins são registradas no boot conforme o que está habilitado no banco.
+     * Com `php artisan route:cache`, a lista fica congelada até limpar o cache.
+     */
+    private static function clearRouteCacheIfCached(): void
+    {
+        try {
+            if (app()->routesAreCached()) {
+                Artisan::call('route:clear');
+            }
+        } catch (\Throwable) {
+            //
         }
     }
 }

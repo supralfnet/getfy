@@ -8,6 +8,7 @@ import Button from '@/components/ui/Button.vue';
 import Toggle from '@/components/ui/Toggle.vue';
 import ImageUpload from '@/components/checkout/ImageUpload.vue';
 import { ChevronDown, ChevronRight, Save, Type, Palette, Package } from 'lucide-vue-next';
+import { YOUTUBE_IFRAME_ALLOW, youtubeEmbedUrlFromPageUrl as youtubeEmbedUrl } from '@/lib/youtubeEmbed';
 
 defineOptions({ layout: LayoutInfoprodutor });
 
@@ -138,15 +139,6 @@ setExpanded(false);
 const inputClass =
     'block w-full rounded-xl border-2 border-zinc-200 bg-white px-4 py-2.5 text-zinc-900 placeholder-zinc-400 transition focus:border-[var(--color-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:placeholder-zinc-500';
 
-function youtubeEmbedUrl(url) {
-    if (!url || typeof url !== 'string') return null;
-    const trimmed = url.trim();
-    if (!trimmed) return null;
-    const m = trimmed.match(
-        /(?:youtube\.com\/watch\?v=|youtube\.com\/embed\/|youtube\.com\/v\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/
-    );
-    return m ? `https://www.youtube.com/embed/${m[1]}` : null;
-}
 </script>
 
 <template>
@@ -325,7 +317,7 @@ function youtubeEmbedUrl(url) {
                                 :src="youtubeEmbedUrl(form.page.hero_video_url)"
                                 title="Vídeo"
                                 class="h-full w-full"
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                :allow="YOUTUBE_IFRAME_ALLOW"
                                 allowfullscreen
                             />
                         </div>
@@ -358,7 +350,7 @@ function youtubeEmbedUrl(url) {
                                             :src="youtubeEmbedUrl(item.video_url)"
                                             title="Vídeo"
                                             class="h-full w-full"
-                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                            :allow="YOUTUBE_IFRAME_ALLOW"
                                             allowfullscreen
                                         />
                                     </div>

@@ -425,6 +425,9 @@ class CheckoutController extends Controller
             'cpf' => [$requireCpf ? 'required' : 'nullable', 'string', 'max:11'],
             'phone' => [($customerFields['phone'] ?? false) ? 'required' : 'nullable', 'string', 'max:24'],
             'coupon_code' => ['nullable', 'string', 'max:64'],
+            'utm_source' => ['nullable', 'string', 'max:255'],
+            'utm_medium' => ['nullable', 'string', 'max:255'],
+            'utm_campaign' => ['nullable', 'string', 'max:255'],
         ];
         if ($request->input('payment_method') === 'card') {
             $paymentService = app(PaymentService::class);
@@ -632,13 +635,22 @@ class CheckoutController extends Controller
         };
 
         $updateCheckoutSession = function (Order $order) use ($validated) {
+            $utmFromRequest = $this->utmPayloadFromValidated($validated);
             $token = $validated['checkout_session_token'] ?? null;
             if ($token) {
-                CheckoutSession::where('session_token', $token)->update([
-                    'step' => CheckoutSession::STEP_CONVERTED,
-                    'order_id' => $order->id,
-                ]);
+                $session = CheckoutSession::where('session_token', $token)->first();
+                if ($session) {
+                    $mergedUtms = $this->mergeSessionUtms($session, $utmFromRequest);
+                    $session->update(array_merge([
+                        'step' => CheckoutSession::STEP_CONVERTED,
+                        'order_id' => $order->id,
+                    ], $mergedUtms));
+                    $this->persistOrderUtms($order, $mergedUtms);
+
+                    return;
+                }
             }
+            $this->persistOrderUtms($order, $utmFromRequest);
         };
 
         if ($paymentMethod === 'pix') {
@@ -646,6 +658,7 @@ class CheckoutController extends Controller
                 'status' => 'pending',
                 'gateway' => null,
                 'gateway_id' => null,
+                'metadata' => array_merge($orderMetadata, ['checkout_payment_method' => 'pix']),
             ]));
             $order->load('orderItems');
             event(new OrderPending($order));
@@ -741,6 +754,7 @@ class CheckoutController extends Controller
                     'status' => 'pending',
                     'gateway' => null,
                     'gateway_id' => null,
+                    'metadata' => array_merge($orderMetadata, ['checkout_payment_method' => 'pix_auto']),
                 ]));
                 $order->load('orderItems');
                 event(new OrderPending($order));
@@ -847,6 +861,7 @@ class CheckoutController extends Controller
                     'status' => 'pending',
                     'gateway' => null,
                     'gateway_id' => null,
+                    'metadata' => array_merge($orderMetadata, ['checkout_payment_method' => 'pix_auto']),
                 ]));
                 $order->load('orderItems');
                 event(new OrderPending($order));
@@ -985,6 +1000,7 @@ class CheckoutController extends Controller
                 'status' => 'pending',
                 'gateway' => null,
                 'gateway_id' => null,
+                'metadata' => array_merge($orderMetadata, ['checkout_payment_method' => 'card']),
             ]));
             $order->load('orderItems');
             event(new OrderPending($order));
@@ -1115,6 +1131,7 @@ class CheckoutController extends Controller
                 'status' => 'pending',
                 'gateway' => null,
                 'gateway_id' => null,
+                'metadata' => array_merge($orderMetadata, ['checkout_payment_method' => 'boleto']),
             ]));
             $order->load('orderItems');
             event(new OrderPending($order));
@@ -1582,5 +1599,61 @@ class CheckoutController extends Controller
             ], now()->addMinutes(1440));
         }
         return $response;
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @return array{utm_source: ?string, utm_medium: ?string, utm_campaign: ?string}
+     */
+    private function utmPayloadFromValidated(array $validated): array
+    {
+        $out = [];
+        foreach (['utm_source', 'utm_medium', 'utm_campaign'] as $k) {
+            $v = isset($validated[$k]) ? trim((string) $validated[$k]) : '';
+            $out[$k] = $v !== '' ? $v : null;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array{utm_source: ?string, utm_medium: ?string, utm_campaign: ?string}  $fromRequest
+     * @return array{utm_source: ?string, utm_medium: ?string, utm_campaign: ?string}
+     */
+    private function mergeSessionUtms(CheckoutSession $session, array $fromRequest): array
+    {
+        $out = [];
+        foreach (['utm_source', 'utm_medium', 'utm_campaign'] as $k) {
+            $req = $fromRequest[$k] ?? null;
+            $sess = $session->{$k} ?? null;
+            $reqN = is_string($req) && trim($req) !== '' ? trim($req) : null;
+            $sessN = is_string($sess) && trim($sess) !== '' ? trim($sess) : null;
+            $out[$k] = $reqN ?? $sessN;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array{utm_source: ?string, utm_medium: ?string, utm_campaign: ?string}  $utmTriple
+     */
+    private function persistOrderUtms(Order $order, array $utmTriple): void
+    {
+        $meta = $order->metadata ?? [];
+        $changed = false;
+        foreach (['utm_source', 'utm_medium', 'utm_campaign'] as $k) {
+            $v = $utmTriple[$k] ?? null;
+            if (! is_string($v) || trim($v) === '') {
+                continue;
+            }
+            $v = trim($v);
+            if (($meta[$k] ?? null) !== $v) {
+                $meta[$k] = $v;
+                $changed = true;
+            }
+        }
+        if ($changed) {
+            $order->update(['metadata' => $meta]);
+        }
     }
 }

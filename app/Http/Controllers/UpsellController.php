@@ -465,6 +465,7 @@ class UpsellController extends Controller
                 'status' => 'pending',
                 'gateway' => null,
                 'gateway_id' => null,
+                'metadata' => ['checkout_payment_method' => 'pix'],
             ]);
             OrderItem::create([
                 'order_id' => $newOrder->id,

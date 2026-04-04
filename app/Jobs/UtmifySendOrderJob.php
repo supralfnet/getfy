@@ -30,21 +30,21 @@ class UtmifySendOrderJob implements ShouldQueue
 
     public function handle(UtmifyService $utmifyService): void
     {
+        $integration = UtmifyIntegration::with('products:id')
+            ->find($this->utmifyIntegrationId);
+
+        if (! $integration || ! $integration->is_active || ! $integration->api_key) {
+            return;
+        }
+
+        $order = Order::with(['user', 'product', 'orderItems.product', 'orderItems.productOffer', 'orderItems.subscriptionPlan'])
+            ->find($this->orderId);
+
+        if (! $order) {
+            return;
+        }
+
         try {
-            $integration = UtmifyIntegration::with('products:id')
-                ->find($this->utmifyIntegrationId);
-
-            if (! $integration || ! $integration->is_active || ! $integration->api_key) {
-                return;
-            }
-
-            $order = Order::with(['user', 'product', 'orderItems.product', 'orderItems.productOffer', 'orderItems.subscriptionPlan'])
-                ->find($this->orderId);
-
-            if (! $order) {
-                return;
-            }
-
             $utmifyService->sendOrder($order, $this->utmifyStatus, $integration->api_key, [
                 'approved_at' => $this->approvedAt,
                 'refunded_at' => $this->refundedAt,
@@ -56,7 +56,7 @@ class UtmifySendOrderJob implements ShouldQueue
                 'status' => $this->utmifyStatus,
                 'message' => $e->getMessage(),
             ]);
-            // Não relançar: evita FAIL na fila e novos retries em cascata
+            throw $e;
         }
     }
 }

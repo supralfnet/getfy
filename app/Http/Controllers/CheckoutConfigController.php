@@ -105,6 +105,14 @@ class CheckoutConfigController extends Controller
             $merged['downsell']['enabled'] = false;
         }
 
+        // Oferta/plano: não persistir chaves mantidas só no produto (Builder não as envia; gravar defaults
+        // anularia payment_gateways no merge público — ver CheckoutController).
+        if ($offerId || $planId) {
+            foreach (['payment_gateways', 'card_installments', 'stripe_link_enabled', 'deliverable_link', 'email_template'] as $inheritKey) {
+                unset($merged[$inheritKey]);
+            }
+        }
+
         if ($offerId) {
             $offer->update(['checkout_config' => $merged]);
             return $request->expectsJson()

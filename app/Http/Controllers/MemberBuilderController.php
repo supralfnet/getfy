@@ -8,6 +8,7 @@ use App\Models\MemberCommunityPage;
 use App\Models\MemberCommunityPost;
 use App\Models\MemberInternalProduct;
 use App\Models\MemberLesson;
+use App\Models\MemberLessonProgress;
 use App\Models\MemberModule;
 use App\Models\MemberSection;
 use App\Models\MemberTurma;
@@ -20,6 +21,7 @@ use App\Services\MemberAreaResolver;
 use App\Services\MemberCommentService;
 use App\Services\StorageService;
 use App\Services\GamificationService;
+use App\Services\MemberProgressService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -66,7 +68,8 @@ class MemberBuilderController extends Controller
 
     public function __construct(
         protected MemberCommentService $commentService,
-        protected GamificationService $gamificationService
+        protected GamificationService $gamificationService,
+        protected MemberProgressService $memberProgressService
     ) {}
 
     public function index(Product $produto): View|RedirectResponse
@@ -115,6 +118,39 @@ class MemberBuilderController extends Controller
         $memberAreaConfigForFront = $produto->member_area_config;
         if (isset($memberAreaConfigForFront['pwa'])) {
             unset($memberAreaConfigForFront['pwa']['vapid_private']);
+        }
+
+        $productUsers = $produto->users()->select('users.id', 'users.name', 'users.email')->orderBy('users.name')->get()->map(fn ($u) => [
+            'id' => $u->id,
+            'name' => $u->name,
+            'email' => $u->email,
+        ])->values()->all();
+
+        $totalLessons = $this->memberProgressService->totalLessonsCount($produto);
+        $completedByUserId = MemberLessonProgress::query()
+            ->where('product_id', $produto->id)
+            ->whereNotNull('completed_at')
+            ->selectRaw('user_id, COUNT(*) as cnt')
+            ->groupBy('user_id')
+            ->get()
+            ->pluck('cnt', 'user_id')
+            ->map(fn ($n) => (int) $n)
+            ->all();
+
+        $studentProgress = [];
+        foreach ($productUsers as $u) {
+            $completed = (int) ($completedByUserId[$u['id']] ?? 0);
+            $percent = $totalLessons === 0
+                ? 100
+                : (int) min(100, round(($completed / $totalLessons) * 100));
+            $studentProgress[] = [
+                'id' => $u['id'],
+                'name' => $u['name'],
+                'email' => $u['email'],
+                'completed_count' => $completed,
+                'total_lessons' => $totalLessons,
+                'percent' => $percent,
+            ];
         }
 
         $produtoPayload = [
@@ -192,7 +228,9 @@ class MemberBuilderController extends Controller
                 'users_count' => $t->users()->count(),
                 'users' => $t->users->map(fn ($u) => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email])->values()->all(),
             ])->values()->all(),
-            'product_users' => $produto->users()->select('users.id', 'users.name', 'users.email')->orderBy('users.name')->get()->map(fn ($u) => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email])->values()->all(),
+            'product_users' => $productUsers,
+            'total_lessons' => $totalLessons,
+            'student_progress' => $studentProgress,
             'community_pages' => $produto->memberCommunityPages->map(fn (MemberCommunityPage $p) => [
                 'id' => $p->id,
                 'title' => $p->title,

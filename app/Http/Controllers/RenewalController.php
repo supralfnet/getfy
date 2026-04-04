@@ -139,6 +139,7 @@ class RenewalController extends Controller
                         'status' => 'pending',
                         'gateway' => 'efi',
                         'gateway_id' => null,
+                        'metadata' => ['checkout_payment_method' => 'pix_auto'],
                     ]));
                     event(new OrderPending($order));
                     try {
@@ -176,6 +177,7 @@ class RenewalController extends Controller
                 'status' => 'pending',
                 'gateway' => null,
                 'gateway_id' => null,
+                'metadata' => ['checkout_payment_method' => 'pix'],
             ]));
             event(new OrderPending($order));
             try {

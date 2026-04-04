@@ -260,31 +260,39 @@ class ProdutosController extends Controller
             'conversion_pixels' => ['nullable', 'array'],
             'conversion_pixels.meta' => ['nullable', 'array'],
             'conversion_pixels.meta.enabled' => ['nullable', 'boolean'],
-            'conversion_pixels.meta.pixel_id' => ['nullable', 'string', 'max:64'],
-            'conversion_pixels.meta.access_token' => ['nullable', 'string', 'max:500'],
-            'conversion_pixels.meta.fire_purchase_on_pix' => ['nullable', 'boolean'],
-            'conversion_pixels.meta.fire_purchase_on_boleto' => ['nullable', 'boolean'],
-            'conversion_pixels.meta.disable_order_bump_events' => ['nullable', 'boolean'],
+            'conversion_pixels.meta.entries' => ['nullable', 'array'],
+            'conversion_pixels.meta.entries.*.id' => ['nullable', 'string', 'max:64'],
+            'conversion_pixels.meta.entries.*.pixel_id' => ['nullable', 'string', 'max:64'],
+            'conversion_pixels.meta.entries.*.access_token' => ['nullable', 'string', 'max:500'],
+            'conversion_pixels.meta.entries.*.fire_purchase_on_pix' => ['nullable', 'boolean'],
+            'conversion_pixels.meta.entries.*.fire_purchase_on_boleto' => ['nullable', 'boolean'],
+            'conversion_pixels.meta.entries.*.disable_order_bump_events' => ['nullable', 'boolean'],
             'conversion_pixels.tiktok' => ['nullable', 'array'],
             'conversion_pixels.tiktok.enabled' => ['nullable', 'boolean'],
-            'conversion_pixels.tiktok.pixel_id' => ['nullable', 'string', 'max:64'],
-            'conversion_pixels.tiktok.access_token' => ['nullable', 'string', 'max:500'],
-            'conversion_pixels.tiktok.fire_purchase_on_pix' => ['nullable', 'boolean'],
-            'conversion_pixels.tiktok.fire_purchase_on_boleto' => ['nullable', 'boolean'],
-            'conversion_pixels.tiktok.disable_order_bump_events' => ['nullable', 'boolean'],
+            'conversion_pixels.tiktok.entries' => ['nullable', 'array'],
+            'conversion_pixels.tiktok.entries.*.id' => ['nullable', 'string', 'max:64'],
+            'conversion_pixels.tiktok.entries.*.pixel_id' => ['nullable', 'string', 'max:64'],
+            'conversion_pixels.tiktok.entries.*.access_token' => ['nullable', 'string', 'max:500'],
+            'conversion_pixels.tiktok.entries.*.fire_purchase_on_pix' => ['nullable', 'boolean'],
+            'conversion_pixels.tiktok.entries.*.fire_purchase_on_boleto' => ['nullable', 'boolean'],
+            'conversion_pixels.tiktok.entries.*.disable_order_bump_events' => ['nullable', 'boolean'],
             'conversion_pixels.google_ads' => ['nullable', 'array'],
             'conversion_pixels.google_ads.enabled' => ['nullable', 'boolean'],
-            'conversion_pixels.google_ads.conversion_id' => ['nullable', 'string', 'max:64'],
-            'conversion_pixels.google_ads.conversion_label' => ['nullable', 'string', 'max:64'],
-            'conversion_pixels.google_ads.fire_purchase_on_pix' => ['nullable', 'boolean'],
-            'conversion_pixels.google_ads.fire_purchase_on_boleto' => ['nullable', 'boolean'],
-            'conversion_pixels.google_ads.disable_order_bump_events' => ['nullable', 'boolean'],
+            'conversion_pixels.google_ads.entries' => ['nullable', 'array'],
+            'conversion_pixels.google_ads.entries.*.id' => ['nullable', 'string', 'max:64'],
+            'conversion_pixels.google_ads.entries.*.conversion_id' => ['nullable', 'string', 'max:64'],
+            'conversion_pixels.google_ads.entries.*.conversion_label' => ['nullable', 'string', 'max:64'],
+            'conversion_pixels.google_ads.entries.*.fire_purchase_on_pix' => ['nullable', 'boolean'],
+            'conversion_pixels.google_ads.entries.*.fire_purchase_on_boleto' => ['nullable', 'boolean'],
+            'conversion_pixels.google_ads.entries.*.disable_order_bump_events' => ['nullable', 'boolean'],
             'conversion_pixels.google_analytics' => ['nullable', 'array'],
             'conversion_pixels.google_analytics.enabled' => ['nullable', 'boolean'],
-            'conversion_pixels.google_analytics.measurement_id' => ['nullable', 'string', 'max:64'],
-            'conversion_pixels.google_analytics.fire_purchase_on_pix' => ['nullable', 'boolean'],
-            'conversion_pixels.google_analytics.fire_purchase_on_boleto' => ['nullable', 'boolean'],
-            'conversion_pixels.google_analytics.disable_order_bump_events' => ['nullable', 'boolean'],
+            'conversion_pixels.google_analytics.entries' => ['nullable', 'array'],
+            'conversion_pixels.google_analytics.entries.*.id' => ['nullable', 'string', 'max:64'],
+            'conversion_pixels.google_analytics.entries.*.measurement_id' => ['nullable', 'string', 'max:64'],
+            'conversion_pixels.google_analytics.entries.*.fire_purchase_on_pix' => ['nullable', 'boolean'],
+            'conversion_pixels.google_analytics.entries.*.fire_purchase_on_boleto' => ['nullable', 'boolean'],
+            'conversion_pixels.google_analytics.entries.*.disable_order_bump_events' => ['nullable', 'boolean'],
             'conversion_pixels.custom_script' => ['nullable', 'array'],
             'conversion_pixels.custom_script.*.id' => ['nullable', 'string', 'max:64'],
             'conversion_pixels.custom_script.*.name' => ['nullable', 'string', 'max:255'],
@@ -369,10 +377,10 @@ class ProdutosController extends Controller
         }
 
         if ($request->has('conversion_pixels')) {
-            $defaults = Product::defaultConversionPixels();
             $merged = [];
             foreach (['meta', 'tiktok', 'google_ads', 'google_analytics'] as $key) {
-                $merged[$key] = array_merge($defaults[$key], $conversionPixels[$key] ?? []);
+                $raw = is_array($conversionPixels[$key] ?? null) ? $conversionPixels[$key] : [];
+                $merged[$key] = Product::normalizeConversionPixelBlock($raw, $key);
             }
             $merged['custom_script'] = [];
             foreach ($conversionPixels['custom_script'] ?? [] as $item) {

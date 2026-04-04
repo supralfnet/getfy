@@ -4,7 +4,6 @@ namespace App\Listeners;
 
 use App\Events\BoletoGenerated;
 use App\Events\OrderCompleted;
-use App\Events\OrderPending;
 use App\Events\OrderRefunded;
 use App\Events\OrderRejected;
 use App\Events\PixGenerated;
@@ -16,6 +15,9 @@ use Illuminate\Support\Str;
 class UtmifyEventSubscriber
 {
     /**
+     * OrderPending não é assinado: no checkout/API o fluxo PIX/boleto já emite OrderPending e em seguida
+     * PixGenerated/BoletoGenerated — ouvir os dois gerava waiting_payment duplicado na Utmify.
+     *
      * @return array<string, string>
      */
     public function subscribe(Dispatcher $events): array
@@ -23,7 +25,6 @@ class UtmifyEventSubscriber
         return [
             PixGenerated::class => 'handlePixGenerated',
             BoletoGenerated::class => 'handleBoletoGenerated',
-            OrderPending::class => 'handleOrderPending',
             OrderCompleted::class => 'handleOrderCompleted',
             OrderRefunded::class => 'handleOrderRefunded',
             OrderRejected::class => 'handleOrderRejected',
@@ -36,11 +37,6 @@ class UtmifyEventSubscriber
     }
 
     public function handleBoletoGenerated(BoletoGenerated $event): void
-    {
-        $this->dispatchForOrder($event->order, 'waiting_payment');
-    }
-
-    public function handleOrderPending(OrderPending $event): void
     {
         $this->dispatchForOrder($event->order, 'waiting_payment');
     }
@@ -69,7 +65,7 @@ class UtmifyEventSubscriber
         ?string $refundedAt = null
     ): void {
         $tenantId = $order->tenant_id;
-        $productId = $order->product_id !== null ? (string) $order->product_id : null;
+        $order->loadMissing('orderItems');
 
         $integrations = UtmifyIntegration::forTenant($tenantId)
             ->where('is_active', true)
@@ -80,7 +76,7 @@ class UtmifyEventSubscriber
             if (! $integration->api_key) {
                 continue;
             }
-            if (! $integration->appliesToProduct($productId)) {
+            if (! $integration->appliesToOrder($order)) {
                 continue;
             }
 
@@ -106,7 +102,8 @@ class UtmifyEventSubscriber
 
     private function shouldDispatchSync(): bool
     {
-        if (config('queue.default') === 'sync') {
+        $default = (string) config('queue.default', 'sync');
+        if ($default === 'sync' || $default === 'database') {
             return true;
         }
 

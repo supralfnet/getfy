@@ -322,7 +322,10 @@ class ApiCheckoutController extends Controller
             'coupon_code' => null,
             'gateway' => null,
             'gateway_id' => null,
-            'metadata' => array_merge($session->metadata ?? [], ['source' => 'api_checkout_pro']),
+            'metadata' => array_merge($session->metadata ?? [], [
+                'source' => 'api_checkout_pro',
+                'checkout_payment_method' => $method,
+            ]),
             'period_start' => $periodStart,
             'period_end' => $periodEnd,
             'is_renewal' => false,

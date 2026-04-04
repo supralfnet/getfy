@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { X, ExternalLink } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -10,6 +10,22 @@ const props = defineProps({
 const emit = defineEmits(['close']);
 
 const activeTab = ref('venda');
+
+const utmSource = computed(() => {
+    const v = props.venda;
+    if (!v) return '';
+    return (v.checkout_session?.utm_source || v.metadata?.utm_source || '').trim();
+});
+const utmCampaign = computed(() => {
+    const v = props.venda;
+    if (!v) return '';
+    return (v.checkout_session?.utm_campaign || v.metadata?.utm_campaign || '').trim();
+});
+const utmMedium = computed(() => {
+    const v = props.venda;
+    if (!v) return '';
+    return (v.checkout_session?.utm_medium || v.metadata?.utm_medium || '').trim();
+});
 
 function close() {
     emit('close');
@@ -186,20 +202,20 @@ function itemLabel(item) {
                             </div>
                             <div class="space-y-1">
                                 <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">utm_source</p>
-                                <p class="text-sm" :class="venda.checkout_session?.utm_source ? 'text-zinc-900 dark:text-white' : 'text-zinc-500'">
-                                    {{ venda.checkout_session?.utm_source ?? 'Não informado' }}
+                                <p class="text-sm" :class="utmSource ? 'text-zinc-900 dark:text-white' : 'text-zinc-500'">
+                                    {{ utmSource || 'Não informado' }}
                                 </p>
                             </div>
                             <div class="space-y-1">
                                 <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">utm_campaign</p>
-                                <p class="text-sm" :class="venda.checkout_session?.utm_campaign ? 'text-zinc-900 dark:text-white' : 'text-zinc-500'">
-                                    {{ venda.checkout_session?.utm_campaign ?? 'Não informado' }}
+                                <p class="text-sm" :class="utmCampaign ? 'text-zinc-900 dark:text-white' : 'text-zinc-500'">
+                                    {{ utmCampaign || 'Não informado' }}
                                 </p>
                             </div>
                             <div class="space-y-1">
                                 <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">utm_medium</p>
-                                <p class="text-sm" :class="venda.checkout_session?.utm_medium ? 'text-zinc-900 dark:text-white' : 'text-zinc-500'">
-                                    {{ venda.checkout_session?.utm_medium ?? 'Não informado' }}
+                                <p class="text-sm" :class="utmMedium ? 'text-zinc-900 dark:text-white' : 'text-zinc-500'">
+                                    {{ utmMedium || 'Não informado' }}
                                 </p>
                             </div>
                             <div class="space-y-1">

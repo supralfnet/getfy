@@ -18,6 +18,11 @@ let watermarkInterval = null;
 const POSITIONS = ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'];
 
 const providerType = computed(() => getVideoProviderType(props.src));
+/** YouTube/Vimeo no iOS: Fullscreen API no player inteiro falha; Vidstack usa fullscreen no iframe do provider. */
+const isEmbedProvider = computed(() => {
+    const t = providerType.value;
+    return t === 'youtube' || t === 'vimeo';
+});
 const isMobile = ref(false);
 let mobileMql = null;
 function onMobileQueryChange(e) {
@@ -161,6 +166,7 @@ function onContextMenu(e) {
             :src="vidstackSrc"
             :poster="posterUrl"
             :playsinline="effectivePlaysinline"
+            :fullscreen-target="isEmbedProvider ? 'provider' : undefined"
             crossorigin
             @vds-ended="onEnded"
             @vds-end="onEnded"

@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.7] - 04-04-2026
+
+### Correções
+
+- Utmify: envio de eventos (PIX gerado, venda aprovada e status) corrigido para considerar todos os produtos do pedido, incluindo order bumps.
+- Utmify: pedidos agora são enviados corretamente mesmo em servidores sem processamento em fila.
+- Utmify: falhas de envio agora são tratadas automaticamente com novas tentativas.
+- Utmify: removida duplicidade de eventos de pagamento pendente.
+- Checkout / Vendas: UTMs agora são capturados e salvos corretamente em todo o processo da compra.
+- Vendas: valores, listagem e exportação agora consideram todos os itens do pedido, garantindo consistência com o detalhe da venda.
+- Adiciona progresso do aluno no Member Builder
+- Diversas correções solicitadas no GitHub
+
 ## [1.0.6] - 27-03-2026
 
 ### Correções

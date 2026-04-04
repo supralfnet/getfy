@@ -29,6 +29,7 @@ import {
     FolderOpen,
     BookOpen,
     Trophy,
+    BarChart3,
 } from 'lucide-vue-next';
 import {
     communityPageIconComponents,
@@ -151,6 +152,7 @@ const tabs = [
     { id: 'header', label: 'Header', icon: LayoutList, hasPreview: true, previewMode: 'area' },
     { id: 'modulos', label: 'Módulos', icon: Layers, hasPreview: true, previewMode: 'area' },
     { id: 'turmas', label: 'Turmas', icon: Users, hasPreview: false },
+    { id: 'progresso', label: 'Progresso', icon: BarChart3, hasPreview: false },
     { id: 'comentarios', label: 'Comentários', icon: MessageSquare, hasPreview: false },
     { id: 'comunidade', label: 'Comunidade', icon: Globe, hasPreview: true, previewMode: 'comunidade' },
     { id: 'certificado', label: 'Certificado', icon: Award, hasPreview: true, previewMode: 'certificate' },
@@ -175,6 +177,15 @@ const showPreview = computed(() => currentTab.value?.hasPreview ?? false);
 const previewMode = computed(() => currentTab.value?.previewMode ?? 'area');
 
 const tabIds = tabs.map((t) => t.id);
+
+const totalLessonsProgress = computed(() => Number(props.produto.total_lessons ?? 0));
+const studentProgressRows = computed(() => {
+    const rows = props.produto.student_progress ?? [];
+    return [...rows].sort((a, b) =>
+        String(a.name || a.email || '').localeCompare(String(b.name || b.email || ''), 'pt', { sensitivity: 'base' })
+    );
+});
+
 const commentStatusFilter = ref('all');
 const commentActionId = ref(null);
 const commentsFiltered = computed(() => {
@@ -2454,6 +2465,78 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                                         Nova turma
                                     </Button>
                                 </div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <template v-else-if="activeTab === 'progresso'">
+                        <div class="space-y-6">
+                            <div>
+                                <h2 class="mb-1 text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Progresso dos alunos</h2>
+                                <p class="text-xs text-zinc-500 dark:text-zinc-400">
+                                    Aulas concluídas na área do membro (marcadas como concluídas pelo aluno). O total de aulas inclui todos os módulos do produto.
+                                </p>
+                            </div>
+                            <div class="flex flex-wrap gap-4 rounded-xl border border-zinc-200 bg-zinc-50/50 px-4 py-3 text-sm dark:border-zinc-600 dark:bg-zinc-800/30">
+                                <div>
+                                    <span class="text-zinc-500 dark:text-zinc-400">Alunos com acesso</span>
+                                    <p class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{{ studentProgressRows.length }}</p>
+                                </div>
+                                <div class="hidden h-10 w-px bg-zinc-200 dark:bg-zinc-600 sm:block" aria-hidden="true" />
+                                <div>
+                                    <span class="text-zinc-500 dark:text-zinc-400">Aulas no curso</span>
+                                    <p class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{{ totalLessonsProgress }}</p>
+                                </div>
+                            </div>
+                            <div
+                                v-if="totalLessonsProgress === 0"
+                                class="rounded-xl border border-dashed border-amber-200 bg-amber-50/50 px-4 py-6 text-center text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200"
+                            >
+                                Nenhuma aula cadastrada nos módulos. Adicione aulas na aba Módulos para acompanhar o progresso.
+                            </div>
+                            <div
+                                v-else-if="!studentProgressRows.length"
+                                class="rounded-xl border border-dashed border-zinc-200 py-12 text-center dark:border-zinc-600"
+                            >
+                                <BarChart3 class="mx-auto h-12 w-12 text-zinc-300 dark:text-zinc-600" />
+                                <p class="mt-3 text-sm font-medium text-zinc-600 dark:text-zinc-400">Nenhum aluno com acesso</p>
+                                <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Quem compra ou é adicionado em Produtos → Alunos aparece aqui.</p>
+                            </div>
+                            <div v-else class="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-600">
+                                <table class="w-full min-w-[640px] text-left text-sm">
+                                    <thead>
+                                        <tr class="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800/50">
+                                            <th class="px-4 py-3 font-semibold text-zinc-700 dark:text-zinc-200">Aluno</th>
+                                            <th class="px-4 py-3 font-semibold text-zinc-700 dark:text-zinc-200">E-mail</th>
+                                            <th class="px-4 py-3 font-semibold text-zinc-700 dark:text-zinc-200">Aulas</th>
+                                            <th class="min-w-[180px] px-4 py-3 font-semibold text-zinc-700 dark:text-zinc-200">Progresso</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-zinc-100 dark:divide-zinc-700/80">
+                                        <tr
+                                            v-for="row in studentProgressRows"
+                                            :key="row.id"
+                                            class="bg-white dark:bg-zinc-900/40"
+                                        >
+                                            <td class="px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100">{{ row.name || '—' }}</td>
+                                            <td class="max-w-[220px] truncate px-4 py-3 text-zinc-600 dark:text-zinc-400" :title="row.email">{{ row.email }}</td>
+                                            <td class="whitespace-nowrap px-4 py-3 text-zinc-700 dark:text-zinc-300">
+                                                {{ row.completed_count }} / {{ row.total_lessons }}
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <div class="flex items-center gap-3">
+                                                    <div class="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
+                                                        <div
+                                                            class="h-full rounded-full bg-[var(--color-primary)] transition-[width] duration-300"
+                                                            :style="{ width: `${row.percent}%` }"
+                                                        />
+                                                    </div>
+                                                    <span class="w-10 shrink-0 text-right text-xs font-medium text-zinc-600 dark:text-zinc-400">{{ row.percent }}%</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </template>

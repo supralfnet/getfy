@@ -678,7 +678,7 @@ const exportXlsUrl = computed(() => {
                                 Valor líquido
                             </p>
                             <p class="text-base font-semibold tabular-nums text-zinc-900 dark:text-white">
-                                {{ formatBRL(v.amount) }}
+                                {{ formatBRL(v.amount_total ?? v.amount) }}
                             </p>
                         </div>
                     </div>
@@ -766,7 +766,7 @@ const exportXlsUrl = computed(() => {
                             </div>
                         </td>
                         <td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-zinc-900 dark:text-white">
-                            {{ formatBRL(v.amount) }}
+                            {{ formatBRL(v.amount_total ?? v.amount) }}
                         </td>
                         <td class="relative whitespace-nowrap px-2 py-3" @click.stop>
                             <div class="relative" :data-venda-menu="v.id">

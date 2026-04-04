@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue';
+import { YOUTUBE_IFRAME_ALLOW, youtubeEmbedSrcFromVideoId } from '@/lib/youtubeEmbed';
 
 const props = defineProps({
     url: { type: String, default: '' },
@@ -12,16 +13,18 @@ const videoId = computed(() => {
     const id = m ? m[1] : null;
     return id && /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : null;
 });
+
+const embedSrc = computed(() => (videoId.value ? youtubeEmbedSrcFromVideoId(videoId.value) : ''));
 </script>
 
 <template>
     <div v-if="videoId" class="mb-8">
         <div class="aspect-video overflow-hidden rounded-2xl shadow-xl ring-1 ring-black/5">
             <iframe
-                :src="`https://www.youtube.com/embed/${videoId}`"
+                :src="embedSrc"
                 title="Vídeo"
                 class="h-full w-full"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                :allow="YOUTUBE_IFRAME_ALLOW"
                 allowfullscreen
             />
         </div>

@@ -4,6 +4,7 @@ import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
 import { CheckCircle2 } from 'lucide-vue-next';
 import ConversionPixels from '@/components/checkout/ConversionPixels.vue';
+import { YOUTUBE_IFRAME_ALLOW, youtubeEmbedUrlFromPageUrl as youtubeEmbedUrl } from '@/lib/youtubeEmbed';
 
 defineOptions({ layout: null });
 
@@ -25,16 +26,6 @@ const buttonAccept = computed(() => props.appearance.button_accept || 'Sim, quer
 const buttonDecline = computed(() => props.appearance.button_decline || 'Não, obrigado');
 const showProductJustBought = computed(() => props.page?.show_product_just_bought !== false);
 const pageBackgroundColor = computed(() => props.page?.background_color || '#f3f4f6');
-
-function youtubeEmbedUrl(url) {
-    if (!url || typeof url !== 'string') return null;
-    const trimmed = url.trim();
-    if (!trimmed) return null;
-    const m = trimmed.match(
-        /(?:youtube\.com\/watch\?v=|youtube\.com\/embed\/|youtube\.com\/v\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/
-    );
-    return m ? `https://www.youtube.com/embed/${m[1]}` : null;
-}
 
 const loadingAccept = ref(null);
 const loadingDecline = ref(false);
@@ -160,7 +151,7 @@ async function decline() {
                         :src="youtubeEmbedUrl(page.hero_video_url)"
                         title="Vídeo"
                         class="h-full w-full"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        :allow="YOUTUBE_IFRAME_ALLOW"
                         allowfullscreen
                     />
                 </div>
@@ -252,7 +243,7 @@ async function decline() {
                                     :src="youtubeEmbedUrl(offer.video_url)"
                                     title="Vídeo da oferta"
                                     class="h-full w-full"
-                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    :allow="YOUTUBE_IFRAME_ALLOW"
                                     allowfullscreen
                                 />
                             </div>

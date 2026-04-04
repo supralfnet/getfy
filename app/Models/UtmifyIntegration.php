@@ -43,17 +43,55 @@ class UtmifyIntegration extends Model
     }
 
     /**
+     * IDs de produtos vinculados à integração (string), para comparação estável com o pedido.
+     *
+     * @return array<int, string>
+     */
+    private function linkedProductIdsNormalized(): array
+    {
+        if ($this->relationLoaded('products')) {
+            return $this->products->pluck('id')->map(fn ($id) => (string) $id)->unique()->values()->all();
+        }
+
+        return $this->products()->pluck('id')->map(fn ($id) => (string) $id)->unique()->values()->all();
+    }
+
+    /**
      * Verifica se esta integração se aplica ao product_id do pedido.
-     * Se não tiver produtos vinculados, aplica a todos; senão só ao product_id.
+     * Se não tiver produtos vinculados, aplica a todos; senão só se o id coincidir (tipos normalizados).
      */
     public function appliesToProduct(?string $productId): bool
     {
-        $productIds = $this->products()->pluck('products.id')->all();
+        $linked = $this->linkedProductIdsNormalized();
+        if ($linked === []) {
+            return true;
+        }
+        if ($productId === null || $productId === '') {
+            return false;
+        }
 
-        if (count($productIds) === 0) {
+        return in_array((string) $productId, $linked, true);
+    }
+
+    /**
+     * Mesma regra de produtos vinculados, considerando também itens do pedido (ex.: order bumps).
+     */
+    public function appliesToOrder(Order $order): bool
+    {
+        $linked = $this->linkedProductIdsNormalized();
+        if ($linked === []) {
             return true;
         }
 
-        return $productId !== null && in_array($productId, $productIds, true);
+        $order->loadMissing('orderItems');
+        $candidates = collect([$order->product_id])
+            ->merge($order->orderItems->pluck('product_id'))
+            ->filter(fn ($id) => $id !== null && $id !== '')
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        return $candidates !== [] && count(array_intersect($linked, $candidates)) > 0;
     }
 }

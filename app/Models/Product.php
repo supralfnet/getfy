@@ -243,30 +243,141 @@ class Product extends Model
     }
 
     /**
+     * Flags padrão por entrada de pixel (checkout / CAPI).
+     *
+     * @return array{fire_purchase_on_pix: bool, fire_purchase_on_boleto: bool, disable_order_bump_events: bool}
+     */
+    public static function defaultConversionPixelEntryFlags(): array
+    {
+        return [
+            'fire_purchase_on_pix' => true,
+            'fire_purchase_on_boleto' => true,
+            'disable_order_bump_events' => false,
+        ];
+    }
+
+    /**
      * Default structure for conversion pixels (Meta, TikTok, Google Ads, GA4, custom scripts).
+     * Plataformas principais usam { enabled, entries: [...] }; legado (objeto plano) é normalizado na leitura.
      *
      * @return array<string, mixed>
      */
     public static function defaultConversionPixels(): array
     {
-        $platformDefaults = [
-            'enabled' => false,
-            'pixel_id' => '',
-            'access_token' => '',
-            'conversion_id' => '',
-            'conversion_label' => '',
-            'measurement_id' => '',
-            'fire_purchase_on_pix' => true,
-            'fire_purchase_on_boleto' => true,
-            'disable_order_bump_events' => false,
-        ];
+        $emptyPlatform = ['enabled' => false, 'entries' => []];
 
         return [
-            'meta' => array_merge($platformDefaults, ['pixel_id' => '', 'access_token' => '']),
-            'tiktok' => array_merge($platformDefaults, ['pixel_id' => '', 'access_token' => '']),
-            'google_ads' => array_merge($platformDefaults, ['conversion_id' => '', 'conversion_label' => '']),
-            'google_analytics' => array_merge($platformDefaults, ['measurement_id' => '']),
+            'meta' => $emptyPlatform,
+            'tiktok' => $emptyPlatform,
+            'google_ads' => $emptyPlatform,
+            'google_analytics' => $emptyPlatform,
             'custom_script' => [],
+        ];
+    }
+
+    /**
+     * Normaliza um bloco de plataforma (novo formato com entries ou legado com pixel_id / conversion_id na raiz).
+     *
+     * @param  array<string, mixed>  $block
+     * @return array{enabled: bool, entries: list<array<string, mixed>>}
+     */
+    public static function normalizeConversionPixelBlock(array $block, string $platform): array
+    {
+        $enabled = filter_var($block['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $flagsBase = static::defaultConversionPixelEntryFlags();
+        $entries = [];
+
+        $hasEntriesKey = array_key_exists('entries', $block) && is_array($block['entries']);
+
+        if ($hasEntriesKey) {
+            foreach ($block['entries'] as $e) {
+                if (! is_array($e)) {
+                    continue;
+                }
+                $flags = $flagsBase;
+                foreach (['fire_purchase_on_pix', 'fire_purchase_on_boleto', 'disable_order_bump_events'] as $fk) {
+                    if (array_key_exists($fk, $e)) {
+                        $flags[$fk] = filter_var($e[$fk], FILTER_VALIDATE_BOOLEAN);
+                    }
+                }
+                $id = trim((string) ($e['id'] ?? ''));
+                if ($id === '') {
+                    $id = Str::uuid()->toString();
+                }
+
+                if ($platform === 'meta' || $platform === 'tiktok') {
+                    $pixelId = trim((string) ($e['pixel_id'] ?? ''));
+                    if ($pixelId === '') {
+                        continue;
+                    }
+                    $entries[] = [
+                        'id' => $id,
+                        'pixel_id' => $pixelId,
+                        'access_token' => trim((string) ($e['access_token'] ?? '')),
+                    ] + $flags;
+                } elseif ($platform === 'google_ads') {
+                    $convId = trim((string) ($e['conversion_id'] ?? ''));
+                    if ($convId === '') {
+                        continue;
+                    }
+                    $entries[] = [
+                        'id' => $id,
+                        'conversion_id' => $convId,
+                        'conversion_label' => trim((string) ($e['conversion_label'] ?? '')),
+                    ] + $flags;
+                } elseif ($platform === 'google_analytics') {
+                    $mid = trim((string) ($e['measurement_id'] ?? ''));
+                    if ($mid === '') {
+                        continue;
+                    }
+                    $entries[] = [
+                        'id' => $id,
+                        'measurement_id' => $mid,
+                    ] + $flags;
+                }
+            }
+        } else {
+            $flags = $flagsBase;
+            foreach (['fire_purchase_on_pix', 'fire_purchase_on_boleto', 'disable_order_bump_events'] as $fk) {
+                if (array_key_exists($fk, $block)) {
+                    $flags[$fk] = filter_var($block[$fk], FILTER_VALIDATE_BOOLEAN);
+                }
+            }
+            $id = Str::uuid()->toString();
+
+            if ($platform === 'meta' || $platform === 'tiktok') {
+                $pixelId = trim((string) ($block['pixel_id'] ?? ''));
+                $accessToken = trim((string) ($block['access_token'] ?? ''));
+                if ($pixelId !== '' || $accessToken !== '') {
+                    $entries[] = [
+                        'id' => $id,
+                        'pixel_id' => $pixelId,
+                        'access_token' => $accessToken,
+                    ] + $flags;
+                }
+            } elseif ($platform === 'google_ads') {
+                $convId = trim((string) ($block['conversion_id'] ?? ''));
+                if ($convId !== '') {
+                    $entries[] = [
+                        'id' => $id,
+                        'conversion_id' => $convId,
+                        'conversion_label' => trim((string) ($block['conversion_label'] ?? '')),
+                    ] + $flags;
+                }
+            } elseif ($platform === 'google_analytics') {
+                $mid = trim((string) ($block['measurement_id'] ?? ''));
+                if ($mid !== '') {
+                    $entries[] = [
+                        'id' => $id,
+                        'measurement_id' => $mid,
+                    ] + $flags;
+                }
+            }
+        }
+
+        return [
+            'enabled' => $enabled,
+            'entries' => array_values($entries),
         ];
     }
 
@@ -276,17 +387,14 @@ class Product extends Model
         if (! is_array($stored)) {
             $stored = [];
         }
-        $default = static::defaultConversionPixels();
         foreach (['meta', 'tiktok', 'google_ads', 'google_analytics'] as $key) {
-            if (isset($stored[$key]) && is_array($stored[$key])) {
-                $stored[$key] = array_merge($default[$key], $stored[$key]);
-            } else {
-                $stored[$key] = $default[$key];
-            }
+            $raw = isset($stored[$key]) && is_array($stored[$key]) ? $stored[$key] : [];
+            $stored[$key] = static::normalizeConversionPixelBlock($raw, $key);
         }
         if (! isset($stored['custom_script']) || ! is_array($stored['custom_script'])) {
             $stored['custom_script'] = [];
         }
+
         return $stored;
     }
 

@@ -136,7 +136,11 @@ class VendasController extends Controller
             if ($m === 'pix') {
                 $query->where(function ($q) {
                     $q->whereIn('gateway', ['spacepag'])
-                        ->orWhereRaw("LOWER(gateway) LIKE '%pix%'");
+                        ->orWhereRaw("LOWER(gateway) LIKE '%pix%'")
+                        ->orWhere(function ($q2) {
+                            $q2->where('metadata->checkout_payment_method', 'pix')
+                                ->orWhere('metadata->checkout_payment_method', 'pix_auto');
+                        });
                 });
             } elseif ($m === 'card') {
                 $query->where(function ($q) {
@@ -144,12 +148,14 @@ class VendasController extends Controller
                         ->orWhereRaw("LOWER(gateway) LIKE '%card%'")
                         ->orWhereRaw("LOWER(gateway) LIKE '%cartao%'")
                         ->orWhereRaw("LOWER(gateway) LIKE '%cartão%'")
-                        ->orWhereRaw("LOWER(gateway) LIKE '%credito%'");
+                        ->orWhereRaw("LOWER(gateway) LIKE '%credito%'")
+                        ->orWhere('metadata->checkout_payment_method', 'card');
                 });
             } elseif ($m === 'boleto') {
                 $query->where(function ($q) {
                     $q->where('gateway', 'boleto')
-                        ->orWhereRaw("LOWER(gateway) LIKE '%boleto%'");
+                        ->orWhereRaw("LOWER(gateway) LIKE '%boleto%'")
+                        ->orWhere('metadata->checkout_payment_method', 'boleto');
                 });
             }
         }
@@ -172,26 +178,39 @@ class VendasController extends Controller
             return $query;
         }
 
-        return $query->whereExists(function ($q) use ($tenantId, $utmSource, $utmMedium, $utmCampaign) {
-            $q->select(DB::raw(1))
-                ->from('checkout_sessions')
-                ->whereColumn('checkout_sessions.order_id', 'orders.id');
+        return $query->where(function ($outer) use ($tenantId, $utmSource, $utmMedium, $utmCampaign) {
+            $outer->whereExists(function ($q) use ($tenantId, $utmSource, $utmMedium, $utmCampaign) {
+                $q->select(DB::raw(1))
+                    ->from('checkout_sessions')
+                    ->whereColumn('checkout_sessions.order_id', 'orders.id');
 
-            if ($tenantId === null) {
-                $q->whereNull('checkout_sessions.tenant_id');
-            } else {
-                $q->where('checkout_sessions.tenant_id', $tenantId);
-            }
+                if ($tenantId === null) {
+                    $q->whereNull('checkout_sessions.tenant_id');
+                } else {
+                    $q->where('checkout_sessions.tenant_id', $tenantId);
+                }
 
-            if ($utmSource !== null) {
-                $q->where('checkout_sessions.utm_source', $utmSource);
-            }
-            if ($utmMedium !== null) {
-                $q->where('checkout_sessions.utm_medium', $utmMedium);
-            }
-            if ($utmCampaign !== null) {
-                $q->where('checkout_sessions.utm_campaign', $utmCampaign);
-            }
+                if ($utmSource !== null) {
+                    $q->where('checkout_sessions.utm_source', $utmSource);
+                }
+                if ($utmMedium !== null) {
+                    $q->where('checkout_sessions.utm_medium', $utmMedium);
+                }
+                if ($utmCampaign !== null) {
+                    $q->where('checkout_sessions.utm_campaign', $utmCampaign);
+                }
+            });
+            $outer->orWhere(function ($metaQ) use ($utmSource, $utmMedium, $utmCampaign) {
+                if ($utmSource !== null) {
+                    $metaQ->where('orders.metadata->utm_source', $utmSource);
+                }
+                if ($utmMedium !== null) {
+                    $metaQ->where('orders.metadata->utm_medium', $utmMedium);
+                }
+                if ($utmCampaign !== null) {
+                    $metaQ->where('orders.metadata->utm_campaign', $utmCampaign);
+                }
+            });
         });
     }
 
@@ -231,16 +250,11 @@ class VendasController extends Controller
             ->withQueryString()
             ->through(function (Order $o) {
                 $arr = $o->toArray();
-                $arr['gateway_label'] = $this->gatewayLabel($o->gateway);
+                $arr['gateway_label'] = $o->paymentMethodDisplayLabel();
                 $arr['product_display_name'] = $this->productDisplayName($o);
                 $arr['checkout_url'] = url('/c/'.$o->getCheckoutSlug());
                 $arr['payment_type_label'] = $this->paymentTypeLabel($o);
-                $itemsTotal = $o->relationLoaded('orderItems')
-                    ? (float) $o->orderItems->sum(fn ($it) => (float) ($it->amount ?? 0))
-                    : null;
-                $arr['amount_total'] = $itemsTotal !== null && $itemsTotal > 0
-                    ? round($itemsTotal, 2)
-                    : (float) $o->amount;
+                $arr['amount_total'] = $o->lineItemsTotalAmount();
 
                 return $arr;
             });
@@ -253,14 +267,23 @@ class VendasController extends Controller
             ->where('status', 'completed')
             ->select('orders.id');
 
-        $valorLiquido = (float) OrderItem::query()
+        $valorItens = (float) OrderItem::query()
             ->whereIn('order_id', $completedOrdersIds)
             ->sum('amount');
+        $valorPedidosSemItens = (float) (clone $statsQuery)
+            ->where('status', 'completed')
+            ->whereDoesntHave('orderItems')
+            ->sum('orders.amount');
+        $valorLiquido = $valorItens + $valorPedidosSemItens;
 
         $vendasPix = (clone $statsQuery)
             ->where(function ($q) {
                 $q->whereIn('gateway', ['spacepag'])
-                    ->orWhereRaw("LOWER(gateway) LIKE '%pix%'");
+                    ->orWhereRaw("LOWER(gateway) LIKE '%pix%'")
+                    ->orWhere(function ($q2) {
+                        $q2->where('metadata->checkout_payment_method', 'pix')
+                            ->orWhere('metadata->checkout_payment_method', 'pix_auto');
+                    });
             })
             ->count();
 
@@ -270,14 +293,16 @@ class VendasController extends Controller
                     ->orWhereRaw("LOWER(gateway) LIKE '%card%'")
                     ->orWhereRaw("LOWER(gateway) LIKE '%cartao%'")
                     ->orWhereRaw("LOWER(gateway) LIKE '%cartão%'")
-                    ->orWhereRaw("LOWER(gateway) LIKE '%credito%'");
+                    ->orWhereRaw("LOWER(gateway) LIKE '%credito%'")
+                    ->orWhere('metadata->checkout_payment_method', 'card');
             })
             ->count();
 
         $vendasBoleto = (clone $statsQuery)
             ->where(function ($q) {
                 $q->where('gateway', 'boleto')
-                    ->orWhereRaw("LOWER(gateway) LIKE '%boleto%'");
+                    ->orWhereRaw("LOWER(gateway) LIKE '%boleto%'")
+                    ->orWhere('metadata->checkout_payment_method', 'boleto');
             })
             ->count();
 
@@ -338,7 +363,11 @@ class VendasController extends Controller
         [$filteredQuery] = $this->buildFilteredQuery($request, $tenantId);
 
         $vendas = $filteredQuery
-            ->with(['product:id,name', 'user:id,name,email'])
+            ->with([
+                'product:id,name',
+                'user:id,name,email',
+                'orderItems:id,order_id,amount',
+            ])
             ->orderByDesc('created_at')
             ->get();
 
@@ -349,8 +378,8 @@ class VendasController extends Controller
                 'cliente' => $o->user?->name ?? $o->email ?? '–',
                 'email' => $o->email ?? '–',
                 'status' => $this->statusLabel($o->status),
-                'gateway' => $this->gatewayLabel($o->gateway),
-                'valor_liquido' => number_format((float) $o->amount, 2, ',', '.'),
+                'gateway' => $o->paymentMethodDisplayLabel(),
+                'valor_liquido' => number_format($o->lineItemsTotalAmount(), 2, ',', '.'),
             ];
         })->all();
 
@@ -486,28 +515,6 @@ class VendasController extends Controller
         }
 
         return response()->json(['success' => true, 'message' => 'Pedido aprovado. O e-mail de acesso foi enviado ao cliente.']);
-    }
-
-    private function gatewayLabel(?string $gateway): string
-    {
-        if ($gateway === null || $gateway === '') {
-            return 'Outro';
-        }
-        $g = strtolower($gateway);
-        if (in_array($g, ['spacepag'], true) || str_contains($g, 'pix')) {
-            return 'PIX';
-        }
-        if ($g === 'card' || str_contains($g, 'cartao') || str_contains($g, 'cartão') || str_contains($g, 'credito')) {
-            return 'Cartão';
-        }
-        if ($g === 'boleto' || str_contains($g, 'boleto')) {
-            return 'Boleto';
-        }
-        if ($g === 'manual') {
-            return 'Manual';
-        }
-
-        return ucfirst($gateway);
     }
 
     private function productDisplayName(Order $order): string

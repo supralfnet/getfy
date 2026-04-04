@@ -7,10 +7,13 @@ const props = defineProps({
 
 const emit = defineEmits(['ready']);
 
-let metaFbqLoaded = false;
-let tiktokLoaded = false;
-let gtagLoaded = false;
-let ga4Loaded = false;
+/** Evita reinicializar quando props.pixels oscila com o mesmo conteúdo. */
+let lastPixelsFingerprint = '';
+
+let gtagExternalScriptInserted = false;
+const gtagConfiguredIds = new Set();
+const metaInitedPixelIds = new Set();
+const tiktokLoadedPixelIds = new Set();
 
 /** Permite apenas IDs alfanuméricos, hífen e underscore para evitar XSS. */
 function isValidPixelId(id) {
@@ -18,47 +21,182 @@ function isValidPixelId(id) {
     return /^[a-zA-Z0-9_-]+$/.test(id);
 }
 
-function loadMetaPixel(pixelId) {
-    if (metaFbqLoaded || !pixelId || !isValidPixelId(pixelId)) return;
+function fingerprintPixels(pixels) {
+    try {
+        return JSON.stringify({
+            meta: pixels?.meta,
+            tiktok: pixels?.tiktok,
+            google_ads: pixels?.google_ads,
+            google_analytics: pixels?.google_analytics,
+            custom_script: (pixels?.custom_script ?? []).map((x) => x?.id),
+        });
+    } catch {
+        return '';
+    }
+}
+
+function getMetaEntries(p) {
+    const m = p?.meta;
+    if (!m?.enabled) return [];
+    if (Array.isArray(m.entries)) {
+        return m.entries.filter((e) => e && isValidPixelId(String(e.pixel_id || '').trim()));
+    }
+    if (m.pixel_id && isValidPixelId(String(m.pixel_id).trim())) {
+        return [m];
+    }
+    return [];
+}
+
+function getTiktokEntries(p) {
+    const m = p?.tiktok;
+    if (!m?.enabled) return [];
+    if (Array.isArray(m.entries)) {
+        return m.entries.filter((e) => e && isValidPixelId(String(e.pixel_id || '').trim()));
+    }
+    if (m.pixel_id && isValidPixelId(String(m.pixel_id).trim())) {
+        return [m];
+    }
+    return [];
+}
+
+function getGoogleAdsEntries(p) {
+    const m = p?.google_ads;
+    if (!m?.enabled) return [];
+    if (Array.isArray(m.entries)) {
+        return m.entries.filter((e) => e && isValidPixelId(String(e.conversion_id || '').trim()));
+    }
+    if (m.conversion_id && isValidPixelId(String(m.conversion_id).trim())) {
+        return [m];
+    }
+    return [];
+}
+
+function getGaEntries(p) {
+    const m = p?.google_analytics;
+    if (!m?.enabled) return [];
+    if (Array.isArray(m.entries)) {
+        return m.entries.filter((e) => e && isValidPixelId(String(e.measurement_id || '').trim()));
+    }
+    if (m.measurement_id && isValidPixelId(String(m.measurement_id).trim())) {
+        return [m];
+    }
+    return [];
+}
+
+function injectMetaLibAndInit(metaEntries) {
+    const ids = metaEntries.map((e) => String(e.pixel_id).trim()).filter((id) => id && isValidPixelId(id));
+    if (!ids.length) return;
+
+    const runInits = () => {
+        if (typeof window.fbq !== 'function') return;
+        ids.forEach((id) => {
+            if (!metaInitedPixelIds.has(id)) {
+                window.fbq('init', id);
+                metaInitedPixelIds.add(id);
+            }
+        });
+        window.fbq('track', 'PageView');
+    };
+
+    if (typeof window.fbq === 'function') {
+        runInits();
+        return;
+    }
+
     const s = document.createElement('script');
     s.async = true;
     s.defer = true;
-    s.innerHTML = `!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','${pixelId}');fbq('track','PageView');`;
+    s.innerHTML =
+        "!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');";
     document.head.appendChild(s);
-    metaFbqLoaded = true;
+
+    const deadline = Date.now() + 10000;
+    const t = setInterval(() => {
+        if (typeof window.fbq === 'function') {
+            clearInterval(t);
+            runInits();
+        } else if (Date.now() > deadline) {
+            clearInterval(t);
+        }
+    }, 30);
 }
 
-function loadTikTokPixel(pixelId) {
-    if (tiktokLoaded || !pixelId || !isValidPixelId(pixelId)) return;
+function injectTiktokWithFirstPixel(pixelId) {
     const s = document.createElement('script');
     s.async = true;
     s.innerHTML = `!function (w, d, t) { w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie"],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e},ttq.load=function(e,n){var i="https://analytics.tiktok.com/i18n/pixel/events.js";ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=i,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};var o=document.createElement("script");o.type="text/javascript",o.async=!0,o.src=i+"?sdkid="+e+"&lib="+t;var a=document.getElementsByTagName("script")[0];a.parentNode.insertBefore(o,a)}; ttq.load('${pixelId}'); ttq.page(); }(window, document, 'ttq');`;
     document.head.appendChild(s);
-    tiktokLoaded = true;
 }
 
-function loadGoogleAds(conversionId) {
-    if (gtagLoaded || !conversionId || !isValidPixelId(conversionId)) return;
-    const s = document.createElement('script');
-    s.async = true;
-    s.src = `https://www.googletagmanager.com/gtag/js?id=${conversionId}`;
-    document.head.appendChild(s);
-    const gtag = document.createElement('script');
-    gtag.innerHTML = `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${conversionId}');`;
-    document.head.appendChild(gtag);
-    gtagLoaded = true;
+function setupTiktokPixels(entries) {
+    const ids = entries.map((e) => String(e.pixel_id).trim()).filter((id) => id && isValidPixelId(id));
+    if (!ids.length) return;
+
+    const loadRemaining = () => {
+        if (typeof window.ttq?.load !== 'function') return;
+        ids.forEach((id) => {
+            if (!tiktokLoadedPixelIds.has(id)) {
+                window.ttq.load(id);
+                window.ttq.page();
+                tiktokLoadedPixelIds.add(id);
+            }
+        });
+    };
+
+    if (typeof window.ttq?.load === 'function') {
+        loadRemaining();
+        return;
+    }
+
+    injectTiktokWithFirstPixel(ids[0]);
+    tiktokLoadedPixelIds.add(ids[0]);
+
+    const deadline = Date.now() + 10000;
+    const iv = setInterval(() => {
+        if (typeof window.ttq?.load === 'function') {
+            clearInterval(iv);
+            for (let i = 1; i < ids.length; i++) {
+                const id = ids[i];
+                if (!tiktokLoadedPixelIds.has(id)) {
+                    window.ttq.load(id);
+                    window.ttq.page();
+                    tiktokLoadedPixelIds.add(id);
+                }
+            }
+        } else if (Date.now() > deadline) {
+            clearInterval(iv);
+        }
+    }, 40);
 }
 
-function loadGA4(measurementId) {
-    if (ga4Loaded || !measurementId || !isValidPixelId(measurementId)) return;
-    const s = document.createElement('script');
-    s.async = true;
-    s.src = `https://www.googletagmanager.com/gtag/js?id=${measurementId}`;
-    document.head.appendChild(s);
-    const gtag = document.createElement('script');
-    gtag.innerHTML = `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${measurementId}');`;
-    document.head.appendChild(gtag);
-    ga4Loaded = true;
+function setupGtag(pixels) {
+    const ads = getGoogleAdsEntries(pixels);
+    const ga = getGaEntries(pixels);
+    const adIds = ads.map((e) => String(e.conversion_id).trim()).filter((id) => id && isValidPixelId(id));
+    const gaIds = ga.map((e) => String(e.measurement_id).trim()).filter((id) => id && isValidPixelId(id));
+    const allIds = [...adIds, ...gaIds];
+    if (!allIds.length) return;
+
+    const first = allIds[0];
+
+    if (!gtagExternalScriptInserted) {
+        window.dataLayer = window.dataLayer || [];
+        const s = document.createElement('script');
+        s.async = true;
+        s.src = `https://www.googletagmanager.com/gtag/js?id=${first}`;
+        document.head.appendChild(s);
+        const inline = document.createElement('script');
+        inline.innerHTML = 'window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag("js", new Date());';
+        document.head.appendChild(inline);
+        gtagExternalScriptInserted = true;
+    }
+
+    allIds.forEach((id) => {
+        if (!gtagConfiguredIds.has(id)) {
+            window.gtag('config', id);
+            gtagConfiguredIds.add(id);
+        }
+    });
 }
 
 /** Domínios permitidos para script src em pixels customizados (evita XSS). */
@@ -101,19 +239,26 @@ function injectCustomScripts() {
 
 function init() {
     const p = props.pixels || {};
+    const fp = fingerprintPixels(p);
+    if (fp === lastPixelsFingerprint) return;
+    lastPixelsFingerprint = fp;
 
-    if (p.meta?.enabled && p.meta?.pixel_id) {
-        loadMetaPixel(p.meta.pixel_id);
+    metaInitedPixelIds.clear();
+    tiktokLoadedPixelIds.clear();
+    gtagConfiguredIds.clear();
+
+    const metaEntries = getMetaEntries(p);
+    if (metaEntries.length) {
+        injectMetaLibAndInit(metaEntries);
     }
-    if (p.tiktok?.enabled && p.tiktok?.pixel_id) {
-        loadTikTokPixel(p.tiktok.pixel_id);
+
+    const tiktokEntries = getTiktokEntries(p);
+    if (tiktokEntries.length) {
+        setupTiktokPixels(tiktokEntries);
     }
-    if (p.google_ads?.enabled && p.google_ads?.conversion_id) {
-        loadGoogleAds(p.google_ads.conversion_id);
-    }
-    if (p.google_analytics?.enabled && p.google_analytics?.measurement_id) {
-        loadGA4(p.google_analytics.measurement_id);
-    }
+
+    setupGtag(p);
+
     injectCustomScripts();
 
     emit('ready');
@@ -122,11 +267,10 @@ function init() {
 onMounted(init);
 watch(() => props.pixels, init, { deep: true });
 
-function shouldFireForPlatform(platform, triggerType, isOrderBump) {
-    if (!platform?.enabled) return false;
-    if (isOrderBump && platform?.disable_order_bump_events) return false;
-    if (triggerType === 'pix' && !platform?.fire_purchase_on_pix) return false;
-    if (triggerType === 'boleto' && !platform?.fire_purchase_on_boleto) return false;
+function shouldFireForEntry(entry, triggerType, isOrderBump) {
+    if (isOrderBump && entry?.disable_order_bump_events) return false;
+    if (triggerType === 'pix' && entry?.fire_purchase_on_pix === false) return false;
+    if (triggerType === 'boleto' && entry?.fire_purchase_on_boleto === false) return false;
     return true;
 }
 
@@ -135,26 +279,39 @@ defineExpose({
         const p = props.pixels || {};
         const num = Number(value) || 0;
 
-        if (p.meta?.enabled && p.meta?.pixel_id && window.fbq && shouldFireForPlatform(p.meta, triggerType, isOrderBump)) {
-            window.fbq('track', 'Purchase', { value: num, currency, content_ids: orderId ? [orderId] : [] });
-        }
-        if (p.tiktok?.enabled && p.tiktok?.pixel_id && window.ttq && shouldFireForPlatform(p.tiktok, triggerType, isOrderBump)) {
-            window.ttq.track('CompletePayment', { value: num, currency, content_id: orderId });
-        }
-        if (p.google_ads?.enabled && p.google_ads?.conversion_id && window.gtag && shouldFireForPlatform(p.google_ads, triggerType, isOrderBump)) {
-            window.gtag('event', 'conversion', {
-                send_to: `${p.google_ads.conversion_id}/${p.google_ads.conversion_label || ''}`.replace(/\/+$/, ''),
-                value: num,
-                currency,
-                transaction_id: orderId,
+        if (p.meta?.enabled && window.fbq) {
+            getMetaEntries(p).forEach((entry) => {
+                if (!entry.pixel_id || !shouldFireForEntry(entry, triggerType, isOrderBump)) return;
+                window.fbq('track', 'Purchase', { value: num, currency, content_ids: orderId ? [orderId] : [] });
             });
         }
-        if (p.google_analytics?.enabled && p.google_analytics?.measurement_id && window.gtag && shouldFireForPlatform(p.google_analytics, triggerType, isOrderBump)) {
-            window.gtag('event', 'purchase', {
-                send_to: p.google_analytics.measurement_id,
-                value: num,
-                currency,
-                transaction_id: orderId,
+        if (p.tiktok?.enabled && window.ttq?.track) {
+            getTiktokEntries(p).forEach((entry) => {
+                if (!entry.pixel_id || !shouldFireForEntry(entry, triggerType, isOrderBump)) return;
+                window.ttq.track('CompletePayment', { value: num, currency, content_id: orderId });
+            });
+        }
+        if (p.google_ads?.enabled && window.gtag) {
+            getGoogleAdsEntries(p).forEach((entry) => {
+                if (!entry.conversion_id || !shouldFireForEntry(entry, triggerType, isOrderBump)) return;
+                const sendTo = `${String(entry.conversion_id).trim()}/${String(entry.conversion_label || '').trim()}`.replace(/\/+$/, '');
+                window.gtag('event', 'conversion', {
+                    send_to: sendTo,
+                    value: num,
+                    currency,
+                    transaction_id: orderId,
+                });
+            });
+        }
+        if (p.google_analytics?.enabled && window.gtag) {
+            getGaEntries(p).forEach((entry) => {
+                if (!entry.measurement_id || !shouldFireForEntry(entry, triggerType, isOrderBump)) return;
+                window.gtag('event', 'purchase', {
+                    send_to: String(entry.measurement_id).trim(),
+                    value: num,
+                    currency,
+                    transaction_id: orderId,
+                });
             });
         }
     },

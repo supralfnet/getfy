@@ -45,6 +45,19 @@ function getCsrfToken() {
     return '';
 }
 
+/** UUID para chaves de lista; fallback quando `crypto.randomUUID` não existe (ex.: página em HTTP). */
+function randomClientId() {
+    const c = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
+    if (c && typeof c.randomUUID === 'function') {
+        return c.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => {
+        const r = (Math.random() * 16) | 0;
+        const v = ch === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+    });
+}
+
 defineOptions({ layout: LayoutInfoprodutor });
 
 const DEFAULT_EMAIL_TEMPLATE = {
@@ -54,23 +67,139 @@ const DEFAULT_EMAIL_TEMPLATE = {
     body_html: '<p>Olá, {nome_cliente}!</p><p>Obrigado por adquirir <strong>{nome_produto}</strong>.</p><p>Use o link abaixo para acessar seu conteúdo:</p><p><a href="{link_acesso}" style="display:inline-block;padding:12px 24px;background:#0ea5e9;color:#fff;text-decoration:none;border-radius:8px;">Acessar agora</a></p><p>Ou copie e cole no navegador: {link_acesso}</p><p>Qualquer dúvida, responda este e-mail.</p>',
 };
 
+const ENTRY_FLAGS = {
+    fire_purchase_on_pix: true,
+    fire_purchase_on_boleto: true,
+    disable_order_bump_events: false,
+};
+
+function newMetaEntry() {
+    return { id: randomClientId(), pixel_id: '', access_token: '', ...ENTRY_FLAGS };
+}
+function newTiktokEntry() {
+    return { id: randomClientId(), pixel_id: '', access_token: '', ...ENTRY_FLAGS };
+}
+function newGoogleAdsEntry() {
+    return { id: randomClientId(), conversion_id: '', conversion_label: '', ...ENTRY_FLAGS };
+}
+function newGaEntry() {
+    return { id: randomClientId(), measurement_id: '', ...ENTRY_FLAGS };
+}
+
 const DEFAULT_CONVERSION_PIXELS = {
-    meta: { enabled: false, pixel_id: '', access_token: '', fire_purchase_on_pix: true, fire_purchase_on_boleto: true, disable_order_bump_events: false },
-    tiktok: { enabled: false, pixel_id: '', access_token: '', fire_purchase_on_pix: true, fire_purchase_on_boleto: true, disable_order_bump_events: false },
-    google_ads: { enabled: false, conversion_id: '', conversion_label: '', fire_purchase_on_pix: true, fire_purchase_on_boleto: true, disable_order_bump_events: false },
-    google_analytics: { enabled: false, measurement_id: '', fire_purchase_on_pix: true, fire_purchase_on_boleto: true, disable_order_bump_events: false },
+    meta: { enabled: false, entries: [] },
+    tiktok: { enabled: false, entries: [] },
+    google_ads: { enabled: false, entries: [] },
+    google_analytics: { enabled: false, entries: [] },
     custom_script: [],
 };
 
 function mergeConversionPixels(raw) {
     if (!raw || typeof raw !== 'object') return JSON.parse(JSON.stringify(DEFAULT_CONVERSION_PIXELS));
     const out = JSON.parse(JSON.stringify(DEFAULT_CONVERSION_PIXELS));
-    for (const key of ['meta', 'tiktok', 'google_ads', 'google_analytics']) {
-        if (raw[key] && typeof raw[key] === 'object') {
-            out[key] = { ...out[key], ...raw[key] };
+
+    function normalizeMetaLike(block, newEntryFn) {
+        const enabled = !!block?.enabled;
+        if (Array.isArray(block?.entries)) {
+            return {
+                enabled,
+                entries: block.entries
+                    .filter((e) => e && typeof e === 'object')
+                    .map((e) => ({ ...newEntryFn(), ...e, id: e.id || randomClientId() })),
+            };
         }
+        if (block?.pixel_id != null || block?.access_token != null) {
+            const pixel_id = String(block.pixel_id ?? '').trim();
+            const access_token = String(block.access_token ?? '').trim();
+            if (pixel_id || access_token) {
+                return {
+                    enabled,
+                    entries: [
+                        {
+                            id: randomClientId(),
+                            pixel_id,
+                            access_token,
+                            fire_purchase_on_pix: block.fire_purchase_on_pix !== false,
+                            fire_purchase_on_boleto: block.fire_purchase_on_boleto !== false,
+                            disable_order_bump_events: !!block.disable_order_bump_events,
+                        },
+                    ],
+                };
+            }
+        }
+        return { enabled, entries: [] };
     }
-    out.custom_script = Array.isArray(raw.custom_script) ? raw.custom_script.filter((s) => s && typeof s === 'object').map((s) => ({ id: s.id || crypto.randomUUID(), name: s.name || '', script: s.script || '' })) : [];
+
+    function normalizeGoogleAdsBlock(block) {
+        const enabled = !!block?.enabled;
+        if (Array.isArray(block?.entries)) {
+            return {
+                enabled,
+                entries: block.entries
+                    .filter((e) => e && typeof e === 'object')
+                    .map((e) => ({ ...newGoogleAdsEntry(), ...e, id: e.id || randomClientId() })),
+            };
+        }
+        const conversion_id = String(block?.conversion_id ?? '').trim();
+        if (conversion_id) {
+            return {
+                enabled,
+                entries: [
+                    {
+                        id: randomClientId(),
+                        conversion_id,
+                        conversion_label: String(block.conversion_label ?? '').trim(),
+                        fire_purchase_on_pix: block.fire_purchase_on_pix !== false,
+                        fire_purchase_on_boleto: block.fire_purchase_on_boleto !== false,
+                        disable_order_bump_events: !!block.disable_order_bump_events,
+                    },
+                ],
+            };
+        }
+        return { enabled, entries: [] };
+    }
+
+    function normalizeGaBlock(block) {
+        const enabled = !!block?.enabled;
+        if (Array.isArray(block?.entries)) {
+            return {
+                enabled,
+                entries: block.entries
+                    .filter((e) => e && typeof e === 'object')
+                    .map((e) => ({ ...newGaEntry(), ...e, id: e.id || randomClientId() })),
+            };
+        }
+        const measurement_id = String(block?.measurement_id ?? '').trim();
+        if (measurement_id) {
+            return {
+                enabled,
+                entries: [
+                    {
+                        id: randomClientId(),
+                        measurement_id,
+                        fire_purchase_on_pix: block.fire_purchase_on_pix !== false,
+                        fire_purchase_on_boleto: block.fire_purchase_on_boleto !== false,
+                        disable_order_bump_events: !!block.disable_order_bump_events,
+                    },
+                ],
+            };
+        }
+        return { enabled, entries: [] };
+    }
+
+    if (raw.meta && typeof raw.meta === 'object') {
+        out.meta = normalizeMetaLike(raw.meta, newMetaEntry);
+    }
+    if (raw.tiktok && typeof raw.tiktok === 'object') {
+        out.tiktok = normalizeMetaLike(raw.tiktok, newTiktokEntry);
+    }
+    if (raw.google_ads && typeof raw.google_ads === 'object') {
+        out.google_ads = normalizeGoogleAdsBlock(raw.google_ads);
+    }
+    if (raw.google_analytics && typeof raw.google_analytics === 'object') {
+        out.google_analytics = normalizeGaBlock(raw.google_analytics);
+    }
+    out.custom_script = Array.isArray(raw.custom_script) ? raw.custom_script.filter((s) => s && typeof s === 'object').map((s) => ({ id: s.id || randomClientId(), name: s.name || '', script: s.script || '' })) : [];
     return out;
 }
 
@@ -1573,90 +1702,146 @@ function submit() {
 
                         <!-- Painel Meta Ads -->
                         <div v-if="selectedPixelTab === 'meta'" class="rounded-xl border border-zinc-200 bg-zinc-50/50 p-5 dark:border-zinc-700 dark:bg-zinc-800/50 space-y-4">
-                            <div class="flex items-center justify-between">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
                                 <h3 class="text-sm font-semibold text-zinc-900 dark:text-white">Meta Ads (Facebook)</h3>
-                                <Toggle v-model="form.conversion_pixels.meta.enabled" />
+                                <div class="flex items-center gap-3">
+                                    <Button type="button" variant="outline" size="sm" :disabled="!form.conversion_pixels.meta.enabled" @click="form.conversion_pixels.meta.entries.push(newMetaEntry())">
+                                        <Plus class="h-4 w-4 mr-1" /> Adicionar pixel
+                                    </Button>
+                                    <Toggle v-model="form.conversion_pixels.meta.enabled" />
+                                </div>
                             </div>
                             <template v-if="form.conversion_pixels.meta.enabled">
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Pixel ID</label>
-                                    <input v-model="form.conversion_pixels.meta.pixel_id" type="text" placeholder="Ex: 123456789" :class="inputClass" />
+                                <div v-for="(item, idx) in form.conversion_pixels.meta.entries" :key="item.id" class="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800 space-y-3">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Pixel {{ idx + 1 }}</span>
+                                        <button type="button" class="rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-300" @click="form.conversion_pixels.meta.entries.splice(idx, 1)">
+                                            <Trash2 class="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                    <div>
+                                        <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Pixel ID</label>
+                                        <input v-model="item.pixel_id" type="text" placeholder="Ex: 123456789" :class="inputClass" />
+                                    </div>
+                                    <div>
+                                        <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Access Token (CAPI)</label>
+                                        <input v-model="item.access_token" type="password" placeholder="Token para Conversions API" :class="inputClass" autocomplete="off" />
+                                        <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Usado para enviar eventos server-side (CAPI).</p>
+                                    </div>
+                                    <div class="space-y-3 border-t border-zinc-200 pt-3 dark:border-zinc-700">
+                                        <Checkbox v-model="item.fire_purchase_on_pix" label="Disparar evento Purchase ao gerar PIX?" />
+                                        <Checkbox v-model="item.fire_purchase_on_boleto" label="Disparar evento Purchase ao gerar Boleto?" />
+                                        <Checkbox v-model="item.disable_order_bump_events" label="Desativar eventos de order bumps?" />
+                                    </div>
                                 </div>
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Access Token (CAPI)</label>
-                                    <input v-model="form.conversion_pixels.meta.access_token" type="password" placeholder="Token para Conversions API" :class="inputClass" autocomplete="off" />
-                                    <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Usado para enviar eventos server-side (CAPI).</p>
-                                </div>
-                                <div class="space-y-3 border-t border-zinc-200 pt-4 dark:border-zinc-700">
-                                    <Checkbox v-model="form.conversion_pixels.meta.fire_purchase_on_pix" label="Disparar evento Purchase ao gerar PIX?" />
-                                    <Checkbox v-model="form.conversion_pixels.meta.fire_purchase_on_boleto" label="Disparar evento Purchase ao gerar Boleto?" />
-                                    <Checkbox v-model="form.conversion_pixels.meta.disable_order_bump_events" label="Desativar eventos de order bumps?" />
-                                </div>
+                                <p v-if="form.conversion_pixels.meta.entries.length === 0" class="text-sm text-zinc-500 dark:text-zinc-400">Nenhum pixel. Clique em «Adicionar pixel» ou desative a integração.</p>
                             </template>
                         </div>
 
                         <!-- Painel TikTok Ads -->
                         <div v-if="selectedPixelTab === 'tiktok'" class="rounded-xl border border-zinc-200 bg-zinc-50/50 p-5 dark:border-zinc-700 dark:bg-zinc-800/50 space-y-4">
-                            <div class="flex items-center justify-between">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
                                 <h3 class="text-sm font-semibold text-zinc-900 dark:text-white">TikTok Ads</h3>
-                                <Toggle v-model="form.conversion_pixels.tiktok.enabled" />
+                                <div class="flex items-center gap-3">
+                                    <Button type="button" variant="outline" size="sm" :disabled="!form.conversion_pixels.tiktok.enabled" @click="form.conversion_pixels.tiktok.entries.push(newTiktokEntry())">
+                                        <Plus class="h-4 w-4 mr-1" /> Adicionar pixel
+                                    </Button>
+                                    <Toggle v-model="form.conversion_pixels.tiktok.enabled" />
+                                </div>
                             </div>
                             <template v-if="form.conversion_pixels.tiktok.enabled">
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Pixel ID</label>
-                                    <input v-model="form.conversion_pixels.tiktok.pixel_id" type="text" placeholder="Ex: C1X2Y3Z4..." :class="inputClass" />
+                                <div v-for="(item, idx) in form.conversion_pixels.tiktok.entries" :key="item.id" class="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800 space-y-3">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Pixel {{ idx + 1 }}</span>
+                                        <button type="button" class="rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-300" @click="form.conversion_pixels.tiktok.entries.splice(idx, 1)">
+                                            <Trash2 class="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                    <div>
+                                        <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Pixel ID</label>
+                                        <input v-model="item.pixel_id" type="text" placeholder="Ex: C1X2Y3Z4..." :class="inputClass" />
+                                    </div>
+                                    <div>
+                                        <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Access Token</label>
+                                        <input v-model="item.access_token" type="password" placeholder="Token do TikTok Events API" :class="inputClass" autocomplete="off" />
+                                    </div>
+                                    <div class="space-y-3 border-t border-zinc-200 pt-3 dark:border-zinc-700">
+                                        <Checkbox v-model="item.fire_purchase_on_pix" label="Disparar evento Purchase ao gerar PIX?" />
+                                        <Checkbox v-model="item.fire_purchase_on_boleto" label="Disparar evento Purchase ao gerar Boleto?" />
+                                        <Checkbox v-model="item.disable_order_bump_events" label="Desativar eventos de order bumps?" />
+                                    </div>
                                 </div>
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Access Token</label>
-                                    <input v-model="form.conversion_pixels.tiktok.access_token" type="password" placeholder="Token do TikTok Events API" :class="inputClass" autocomplete="off" />
-                                </div>
-                                <div class="space-y-3 border-t border-zinc-200 pt-4 dark:border-zinc-700">
-                                    <Checkbox v-model="form.conversion_pixels.tiktok.fire_purchase_on_pix" label="Disparar evento Purchase ao gerar PIX?" />
-                                    <Checkbox v-model="form.conversion_pixels.tiktok.fire_purchase_on_boleto" label="Disparar evento Purchase ao gerar Boleto?" />
-                                    <Checkbox v-model="form.conversion_pixels.tiktok.disable_order_bump_events" label="Desativar eventos de order bumps?" />
-                                </div>
+                                <p v-if="form.conversion_pixels.tiktok.entries.length === 0" class="text-sm text-zinc-500 dark:text-zinc-400">Nenhum pixel. Clique em «Adicionar pixel» ou desative a integração.</p>
                             </template>
                         </div>
 
                         <!-- Painel Google Ads -->
                         <div v-if="selectedPixelTab === 'google_ads'" class="rounded-xl border border-zinc-200 bg-zinc-50/50 p-5 dark:border-zinc-700 dark:bg-zinc-800/50 space-y-4">
-                            <div class="flex items-center justify-between">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
                                 <h3 class="text-sm font-semibold text-zinc-900 dark:text-white">Google Ads</h3>
-                                <Toggle v-model="form.conversion_pixels.google_ads.enabled" />
+                                <div class="flex items-center gap-3">
+                                    <Button type="button" variant="outline" size="sm" :disabled="!form.conversion_pixels.google_ads.enabled" @click="form.conversion_pixels.google_ads.entries.push(newGoogleAdsEntry())">
+                                        <Plus class="h-4 w-4 mr-1" /> Adicionar conversão
+                                    </Button>
+                                    <Toggle v-model="form.conversion_pixels.google_ads.enabled" />
+                                </div>
                             </div>
                             <template v-if="form.conversion_pixels.google_ads.enabled">
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Conversion ID</label>
-                                    <input v-model="form.conversion_pixels.google_ads.conversion_id" type="text" placeholder="Ex: AW-123456789" :class="inputClass" />
+                                <div v-for="(item, idx) in form.conversion_pixels.google_ads.entries" :key="item.id" class="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800 space-y-3">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Conversão {{ idx + 1 }}</span>
+                                        <button type="button" class="rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-300" @click="form.conversion_pixels.google_ads.entries.splice(idx, 1)">
+                                            <Trash2 class="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                    <div>
+                                        <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Conversion ID</label>
+                                        <input v-model="item.conversion_id" type="text" placeholder="Ex: AW-123456789" :class="inputClass" />
+                                    </div>
+                                    <div>
+                                        <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Conversion Label</label>
+                                        <input v-model="item.conversion_label" type="text" placeholder="Ex: AbCdEfGhIjKlMn" :class="inputClass" />
+                                    </div>
+                                    <div class="space-y-3 border-t border-zinc-200 pt-3 dark:border-zinc-700">
+                                        <Checkbox v-model="item.fire_purchase_on_pix" label="Disparar evento Purchase ao gerar PIX?" />
+                                        <Checkbox v-model="item.fire_purchase_on_boleto" label="Disparar evento Purchase ao gerar Boleto?" />
+                                        <Checkbox v-model="item.disable_order_bump_events" label="Desativar eventos de order bumps?" />
+                                    </div>
                                 </div>
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Conversion Label</label>
-                                    <input v-model="form.conversion_pixels.google_ads.conversion_label" type="text" placeholder="Ex: AbCdEfGhIjKlMn" :class="inputClass" />
-                                </div>
-                                <div class="space-y-3 border-t border-zinc-200 pt-4 dark:border-zinc-700">
-                                    <Checkbox v-model="form.conversion_pixels.google_ads.fire_purchase_on_pix" label="Disparar evento Purchase ao gerar PIX?" />
-                                    <Checkbox v-model="form.conversion_pixels.google_ads.fire_purchase_on_boleto" label="Disparar evento Purchase ao gerar Boleto?" />
-                                    <Checkbox v-model="form.conversion_pixels.google_ads.disable_order_bump_events" label="Desativar eventos de order bumps?" />
-                                </div>
+                                <p v-if="form.conversion_pixels.google_ads.entries.length === 0" class="text-sm text-zinc-500 dark:text-zinc-400">Nenhuma conversão. Clique em «Adicionar conversão» ou desative a integração.</p>
                             </template>
                         </div>
 
                         <!-- Painel Google Analytics -->
                         <div v-if="selectedPixelTab === 'google_analytics'" class="rounded-xl border border-zinc-200 bg-zinc-50/50 p-5 dark:border-zinc-700 dark:bg-zinc-800/50 space-y-4">
-                            <div class="flex items-center justify-between">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
                                 <h3 class="text-sm font-semibold text-zinc-900 dark:text-white">Google Analytics (GA4)</h3>
-                                <Toggle v-model="form.conversion_pixels.google_analytics.enabled" />
+                                <div class="flex items-center gap-3">
+                                    <Button type="button" variant="outline" size="sm" :disabled="!form.conversion_pixels.google_analytics.enabled" @click="form.conversion_pixels.google_analytics.entries.push(newGaEntry())">
+                                        <Plus class="h-4 w-4 mr-1" /> Adicionar propriedade
+                                    </Button>
+                                    <Toggle v-model="form.conversion_pixels.google_analytics.enabled" />
+                                </div>
                             </div>
                             <template v-if="form.conversion_pixels.google_analytics.enabled">
-                                <div>
-                                    <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Measurement ID</label>
-                                    <input v-model="form.conversion_pixels.google_analytics.measurement_id" type="text" placeholder="Ex: G-XXXXXXXXXX" :class="inputClass" />
+                                <div v-for="(item, idx) in form.conversion_pixels.google_analytics.entries" :key="item.id" class="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800 space-y-3">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">GA4 {{ idx + 1 }}</span>
+                                        <button type="button" class="rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-300" @click="form.conversion_pixels.google_analytics.entries.splice(idx, 1)">
+                                            <Trash2 class="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                    <div>
+                                        <label class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Measurement ID</label>
+                                        <input v-model="item.measurement_id" type="text" placeholder="Ex: G-XXXXXXXXXX" :class="inputClass" />
+                                    </div>
+                                    <div class="space-y-3 border-t border-zinc-200 pt-3 dark:border-zinc-700">
+                                        <Checkbox v-model="item.fire_purchase_on_pix" label="Disparar evento Purchase ao gerar PIX?" />
+                                        <Checkbox v-model="item.fire_purchase_on_boleto" label="Disparar evento Purchase ao gerar Boleto?" />
+                                        <Checkbox v-model="item.disable_order_bump_events" label="Desativar eventos de order bumps?" />
+                                    </div>
                                 </div>
-                                <div class="space-y-3 border-t border-zinc-200 pt-4 dark:border-zinc-700">
-                                    <Checkbox v-model="form.conversion_pixels.google_analytics.fire_purchase_on_pix" label="Disparar evento Purchase ao gerar PIX?" />
-                                    <Checkbox v-model="form.conversion_pixels.google_analytics.fire_purchase_on_boleto" label="Disparar evento Purchase ao gerar Boleto?" />
-                                    <Checkbox v-model="form.conversion_pixels.google_analytics.disable_order_bump_events" label="Desativar eventos de order bumps?" />
-                                </div>
+                                <p v-if="form.conversion_pixels.google_analytics.entries.length === 0" class="text-sm text-zinc-500 dark:text-zinc-400">Nenhuma propriedade. Clique em «Adicionar propriedade» ou desative a integração.</p>
                             </template>
                         </div>
 
@@ -1664,7 +1849,7 @@ function submit() {
                         <div v-if="selectedPixelTab === 'custom_script'" class="rounded-xl border border-zinc-200 bg-zinc-50/50 p-5 dark:border-zinc-700 dark:bg-zinc-800/50 space-y-4">
                             <div class="flex items-center justify-between">
                                 <h3 class="text-sm font-semibold text-zinc-900 dark:text-white">Scripts personalizados</h3>
-                                <Button type="button" variant="outline" size="sm" @click="form.conversion_pixels.custom_script.push({ id: crypto.randomUUID(), name: '', script: '' })">
+                                <Button type="button" variant="outline" size="sm" @click="form.conversion_pixels.custom_script.push({ id: randomClientId(), name: '', script: '' })">
                                     <Plus class="h-4 w-4 mr-1" /> Adicionar pixel
                                 </Button>
                             </div>

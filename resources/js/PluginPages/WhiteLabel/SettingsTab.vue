@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue';
-import { router } from '@inertiajs/vue3';
+import { router, usePage } from '@inertiajs/vue3';
 import Button from '@/components/ui/Button.vue';
 import { Upload, Trash2, Copy } from 'lucide-vue-next';
 
@@ -27,6 +27,15 @@ const form = reactive({
 const uploadField = ref(null);
 const uploading = ref(false);
 
+const page = usePage();
+
+/** Evita 404 quando APP_URL inclui subpasta (axios com path absoluto / ignora o prefixo). */
+function whiteLabelApi(path) {
+    const base = String(page.props.app_url || '').replace(/\/$/, '');
+    const p = path.startsWith('/') ? path : `/${path}`;
+    return base ? `${base}${p}` : p;
+}
+
 const fieldLabels = {
     app_logo: 'Logo (tema claro)',
     app_logo_dark: 'Logo (tema escuro)',
@@ -42,7 +51,7 @@ async function load() {
     loading.value = true;
     error.value = '';
     try {
-        const res = await window.axios.get('/white-label/settings/data');
+        const res = await window.axios.get(whiteLabelApi('/white-label/settings/data'));
         canSyncGlobal.value = !!res.data?.can_sync_global;
         const b = res.data?.branding ?? {};
         Object.keys(form).forEach((k) => {
@@ -59,7 +68,7 @@ async function saveText() {
     saving.value = true;
     error.value = '';
     try {
-        await window.axios.put('/white-label/settings', { ...form });
+        await window.axios.put(whiteLabelApi('/white-label/settings'), { ...form });
         await router.reload({ preserveScroll: true });
     } catch (e) {
         error.value = e?.response?.data?.message || 'Erro ao salvar.';
@@ -79,7 +88,7 @@ async function onFileChange(event, field) {
     fd.append('field', field);
     fd.append('file', file);
     try {
-        const res = await window.axios.post('/white-label/settings/upload', fd, {
+        const res = await window.axios.post(whiteLabelApi('/white-label/settings/upload'), fd, {
             headers: { 'Content-Type': 'multipart/form-data' },
         });
         if (res.data?.field && res.data?.url) {
@@ -97,7 +106,7 @@ async function onFileChange(event, field) {
 async function clearField(field) {
     error.value = '';
     try {
-        await window.axios.post('/white-label/settings/clear-field', { field });
+        await window.axios.post(whiteLabelApi('/white-label/settings/clear-field'), { field });
         form[field] = '';
         await router.reload({ preserveScroll: true });
     } catch (e) {
@@ -109,7 +118,7 @@ async function syncGlobal() {
     syncing.value = true;
     error.value = '';
     try {
-        await window.axios.post('/white-label/settings/sync-global');
+        await window.axios.post(whiteLabelApi('/white-label/settings/sync-global'));
         await router.reload({ preserveScroll: true });
     } catch (e) {
         error.value = e?.response?.data?.message || 'Não foi possível copiar para o login global.';

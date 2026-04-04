@@ -63,6 +63,20 @@ class Order extends Model
         return $this->hasOne(CheckoutSession::class);
     }
 
+    /**
+     * Valor líquido exibido em relatórios: soma das linhas (produto + order bumps) ou, se não houver itens, orders.amount.
+     */
+    public function lineItemsTotalAmount(): float
+    {
+        $this->loadMissing('orderItems');
+
+        if ($this->orderItems->isEmpty()) {
+            return (float) $this->amount;
+        }
+
+        return round((float) $this->orderItems->sum(fn ($it) => (float) ($it->amount ?? 0)), 2);
+    }
+
     public function getCheckoutSlug(): string
     {
         if ($this->productOffer && $this->productOffer->checkout_slug) {
@@ -72,6 +86,46 @@ class Order extends Model
             return $this->subscriptionPlan->checkout_slug;
         }
         return $this->product?->checkout_slug ?? '';
+    }
+
+    /**
+     * Rótulo para UI (vendas, export): PIX / Cartão / Boleto conforme o fluxo do checkout,
+     * não o slug do gateway (ex.: mercadopago).
+     */
+    public function paymentMethodDisplayLabel(): string
+    {
+        $meta = $this->metadata ?? [];
+        $m = isset($meta['checkout_payment_method']) ? strtolower((string) $meta['checkout_payment_method']) : '';
+
+        return match ($m) {
+            'pix' => 'PIX',
+            'pix_auto' => 'PIX automático',
+            'card' => 'Cartão',
+            'boleto' => 'Boleto',
+            default => self::gatewaySlugDisplayLabel($this->gateway),
+        };
+    }
+
+    public static function gatewaySlugDisplayLabel(?string $gateway): string
+    {
+        if ($gateway === null || $gateway === '') {
+            return 'Outro';
+        }
+        $g = strtolower($gateway);
+        if (in_array($g, ['spacepag'], true) || str_contains($g, 'pix')) {
+            return 'PIX';
+        }
+        if ($g === 'card' || str_contains($g, 'cartao') || str_contains($g, 'cartão') || str_contains($g, 'credito')) {
+            return 'Cartão';
+        }
+        if ($g === 'boleto' || str_contains($g, 'boleto')) {
+            return 'Boleto';
+        }
+        if ($g === 'manual') {
+            return 'Manual';
+        }
+
+        return ucfirst($gateway);
     }
 
     public function scopeForTenant($query, ?int $tenantId)
