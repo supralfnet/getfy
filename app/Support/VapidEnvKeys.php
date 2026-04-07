@@ -2,17 +2,11 @@
 
 namespace App\Support;
 
-use Jose\Component\Core\Util\Base64UrlSafe;
-
 /**
  * Normaliza chaves VAPID vindas do .env para o formato esperado por minishlink/web-push (Base64 URL-safe).
  */
 final class VapidEnvKeys
 {
-    private const PUBLIC_KEY_DECODED_LEN = 65;
-
-    private const PRIVATE_KEY_DECODED_LEN = 32;
-
     public static function normalize(?string $value): ?string
     {
         if ($value === null) {
@@ -31,23 +25,12 @@ final class VapidEnvKeys
         if (str_contains($v, '+') || str_contains($v, '/')) {
             $v = strtr($v, ['+' => '-', '/' => '_']);
         }
-
-        return $v;
-    }
-
-    /**
-     * Verifica se as chaves decodificam para os tamanhos esperados pela curva P-256 (Web Push).
-     */
-    public static function decodedLengthsValid(string $publicKeyBase64Url, string $privateKeyBase64Url): bool
-    {
-        try {
-            $pub = Base64UrlSafe::decode($publicKeyBase64Url);
-            $priv = Base64UrlSafe::decode($privateKeyBase64Url);
-        } catch (\Throwable) {
-            return false;
+        // Remove qualquer caractere fora do alfabeto base64url (NBSP, zero-width, etc.)
+        $v = preg_replace('/[^A-Za-z0-9\-_=]/', '', $v) ?? '';
+        if ($v === '') {
+            return null;
         }
 
-        return strlen($pub) === self::PUBLIC_KEY_DECODED_LEN
-            && strlen($priv) === self::PRIVATE_KEY_DECODED_LEN;
+        return $v;
     }
 }

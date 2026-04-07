@@ -6,6 +6,7 @@ use App\Models\PanelNotification;
 use App\Models\PanelPushSubscription;
 use App\Support\VapidEnvKeys;
 use Minishlink\WebPush\Subscription;
+use Minishlink\WebPush\VAPID;
 use Minishlink\WebPush\WebPush;
 use Illuminate\Support\Facades\Log;
 
@@ -58,28 +59,11 @@ class PanelPushService
 
     public function sendToTenant(?int $tenantId, string $title, string $body, ?string $url = null): int
     {
-        $vapidPublic = config('getfy.pwa.vapid_public');
-        $vapidPrivate = config('getfy.pwa.vapid_private');
-        if (is_string($vapidPublic)) {
-            $vapidPublic = trim($vapidPublic, " \t\n\r\0\x0B\"'");
-        }
-        if (is_string($vapidPrivate)) {
-            $vapidPrivate = trim($vapidPrivate, " \t\n\r\0\x0B\"'");
-        }
+        $vapidPublic = VapidEnvKeys::normalize(config('getfy.pwa.vapid_public'));
+        $vapidPrivate = VapidEnvKeys::normalize(config('getfy.pwa.vapid_private'));
 
         if (! $vapidPublic || ! $vapidPrivate) {
             Log::warning('PanelPushService: VAPID não configurado (defina PWA_VAPID_PUBLIC e PWA_VAPID_PRIVATE no .env)', ['tenant_id' => $tenantId]);
-            return 0;
-        }
-
-        if (! VapidEnvKeys::decodedLengthsValid($vapidPublic, $vapidPrivate)) {
-            Log::error('PanelPushService: chaves VAPID inválidas ou truncadas (decode não resulta em 65/32 bytes).', [
-                'tenant_id' => $tenantId,
-                'public_b64url_len' => strlen($vapidPublic),
-                'private_b64url_len' => strlen($vapidPrivate),
-                'hint' => 'Rode `php artisan pwa:vapid` no container app, reinicie app+queue, limpe `bootstrap/cache/config.php`, apague inscrições antigas em panel_push_subscriptions e reative notificações no PWA.',
-            ]);
-
             return 0;
         }
 
@@ -90,6 +74,25 @@ class PanelPushService
         }
 
         $subject = 'mailto:' . (config('mail.from.address') ?: 'noreply@' . parse_url(config('app.url'), PHP_URL_HOST));
+
+        try {
+            VAPID::validate([
+                'subject' => $subject,
+                'publicKey' => $vapidPublic,
+                'privateKey' => $vapidPrivate,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('PanelPushService: par VAPID rejeitado pela lib web-push (chave truncada/corrompida ou subject inválido).', [
+                'tenant_id' => $tenantId,
+                'message' => $e->getMessage(),
+                'public_b64url_len' => strlen($vapidPublic),
+                'private_b64url_len' => strlen($vapidPrivate),
+                'hint' => 'Rode `php artisan pwa:vapid` no container app; confira uma única linha PWA_VAPID_* no .env e em .docker/pwa_vapid.env; reinicie app+queue; reative notificações no PWA após trocar o par.',
+            ]);
+
+            return 0;
+        }
+
         $auth = [
             'VAPID' => [
                 'subject' => $subject,
