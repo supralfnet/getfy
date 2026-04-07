@@ -16,6 +16,15 @@ fi
 
 rm -f public/hot 2>/dev/null || true
 
+# Exporta VAPID do arquivo compartilhado (se existir) para o ambiente do processo atual.
+# Isso garante que workers long-running (queue/schedule) enxerguem as chaves mesmo que o .env não seja relido.
+if [ -f .docker/pwa_vapid.env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . .docker/pwa_vapid.env || true
+  set +a
+fi
+
 # Se existir VAPID compartilhado (volume .docker), injeta no .env local.
 # Importante: o worker "queue" pode não rodar pwa:vapid; ele precisa ler as mesmas chaves do "app".
 php -r '
@@ -43,6 +52,9 @@ foreach (["PWA_VAPID_PUBLIC","PWA_VAPID_PRIVATE"] as $k) {
 }
 file_put_contents($envFile, $env);
 ';
+
+# Se houver cache de config, pode "prender" env antigo. Limpa de forma segura (sem falhar o boot).
+rm -f bootstrap/cache/config.php 2>/dev/null || true
 
 php -r '
 $envFile = ".env";
