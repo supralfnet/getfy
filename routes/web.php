@@ -33,7 +33,13 @@ Route::get('/painel-sw.js', function () {
         abort(404);
     }
 
-    return response()->file($path, ['Content-Type' => 'application/javascript']);
+    return response()->file($path, [
+        'Content-Type' => 'application/javascript; charset=UTF-8',
+        // Evita cache agressivo do SW (senão o browser não busca a versão nova e mantém o SW antigo ativo).
+        'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma' => 'no-cache',
+        'Expires' => '0',
+    ]);
 })->name('panel.pwa.sw');
 
 Route::get('/', function (\Illuminate\Http\Request $request) {

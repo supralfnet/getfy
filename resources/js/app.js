@@ -1,5 +1,24 @@
 import './bootstrap';
 
+// Migração: versões antigas registravam /painel-sw.js com scope "/" e isso pode interceptar checkout + scripts de terceiros (Meta Pixel).
+// Aqui removemos automaticamente o registro legado (scope raiz) quando existir.
+if (typeof window !== 'undefined' && typeof navigator !== 'undefined' && navigator.serviceWorker?.getRegistrations) {
+    try {
+        navigator.serviceWorker.getRegistrations().then((regs) => {
+            const origin = window.location.origin;
+            regs.forEach((reg) => {
+                const scriptUrl = reg?.active?.scriptURL || reg?.installing?.scriptURL || reg?.waiting?.scriptURL || '';
+                const scope = reg?.scope || '';
+                const isPainelSw = typeof scriptUrl === 'string' && scriptUrl.includes('/painel-sw.js');
+                const isRootScope = typeof scope === 'string' && scope === `${origin}/`;
+                if (isPainelSw && isRootScope) {
+                    reg.unregister().catch(() => {});
+                }
+            });
+        });
+    } catch (_) {}
+}
+
 // Registrar Service Worker do painel apenas fora da área de membros e do checkout (sem prompts/efeitos PWA no checkout)
 let skipPanelPwa = false;
 if (typeof window !== 'undefined') {
