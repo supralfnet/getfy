@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.8] - 09-04-2026
+
+### Novidades
+
+- Integração com área de membros externa (**Cademí**).
+- Sistema de **equipe** com permissões por cargos e membros.
+- Integração com **Pagar.me** como gateway de pagamento.
+- Editor de checkout: campos avançados para **CSS**, **HTML** (head e corpo) e **JavaScript** personalizados na página pública.
+
+### Correções
+
+- Checkout (mobile): corrigido o zoom indesejado ao focar campos de formulário (inputs).
+
 ## [1.0.7] - 04-04-2026
 
 ### Correções
