@@ -104,26 +104,26 @@ class RelatoriosController extends Controller
         }
 
         $abandonadosVisit = (clone $sessionsQuery)
-            ->where('step', CheckoutSession::STEP_VISIT)
-            ->whereNull('order_id')
+            ->whereAbandonmentVisitEligible()
             ->count();
 
         $abandonadosForm = (clone $sessionsQuery)
-            ->whereIn('step', [CheckoutSession::STEP_FORM_STARTED, CheckoutSession::STEP_FORM_FILLED])
-            ->whereNull('order_id')
+            ->whereAbandonmentFormEligible()
             ->count();
 
         $converted = (clone $sessionsQuery)
             ->where('step', CheckoutSession::STEP_CONVERTED)
             ->count();
 
+        $totalSessoesPeriodo = (clone $sessionsQuery)->count();
+
         $abandonadosTotal = $abandonadosVisit + $abandonadosForm;
-        $totalSessions = $abandonadosVisit + $abandonadosForm + $converted;
-        $taxaConversao = $totalSessions > 0 ? round((float) $converted / $totalSessions * 100, 1) : 0.0;
+        $taxaConversao = $totalSessoesPeriodo > 0
+            ? round((float) $converted / $totalSessoesPeriodo * 100, 1)
+            : 0.0;
 
         $abandonadosComEmail = CheckoutSession::forTenant($tenantId)
-            ->whereIn('step', [CheckoutSession::STEP_FORM_STARTED, CheckoutSession::STEP_FORM_FILLED])
-            ->whereNull('order_id')
+            ->whereAbandonmentFormEligible()
             ->whereNotNull('email')
             ->where('email', '!=', '');
         if ($start && $end) {

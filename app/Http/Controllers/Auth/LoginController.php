@@ -115,6 +115,27 @@ class LoginController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
+        $to = $request->query('redirect');
+        if (is_string($to) && $this->isSafeMemberAreaLoginRedirect($to)) {
+            return redirect($to);
+        }
+
         return redirect('/');
+    }
+
+    /**
+     * Evita open redirect: só paths de login da área de membros (/m/{slug}/login ou /login em host dedicado).
+     */
+    private function isSafeMemberAreaLoginRedirect(string $path): bool
+    {
+        if ($path === '' || ! str_starts_with($path, '/') || str_starts_with($path, '//')) {
+            return false;
+        }
+        if (str_contains($path, '..')) {
+            return false;
+        }
+
+        return (bool) preg_match('#^/m/[a-zA-Z0-9]{6,16}/login$#', $path)
+            || $path === '/login';
     }
 }

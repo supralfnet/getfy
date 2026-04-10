@@ -18,6 +18,20 @@ return [
     ],
     'auto_migrate' => filter_var(env('APP_AUTO_MIGRATE', false), FILTER_VALIDATE_BOOLEAN),
     'cron_secret' => env('CRON_SECRET', null),
+
+    /*
+    | Webhooks de integração (Integrações > Webhooks): envio HTTP para URLs cadastradas.
+    | Por padrão, pedido pendente e pedido pago disparam na hora (sem fila), para evitar atraso
+    | quando o worker está sobrecarregado. Demais eventos seguem fila/heartbeat (ver docs).
+    */
+    'webhooks' => [
+        'sync_critical_payment_events' => filter_var(
+            env('GETFY_WEBHOOKS_SYNC_CRITICAL_PAYMENT', true),
+            FILTER_VALIDATE_BOOLEAN
+        ),
+        /** Se true, todos os webhooks de integração rodam síncronos (pode alongar requests). */
+        'dispatch_all_sync' => filter_var(env('GETFY_WEBHOOKS_DISPATCH_ALL_SYNC', false), FILTER_VALIDATE_BOOLEAN),
+    ],
     'version' => $version,
     'update_repository_url' => env('GETFY_UPDATE_REPO', 'https://github.com/getfy-opensource/getfy.git'),
     'update_branch' => env('GETFY_UPDATE_BRANCH', 'main'),

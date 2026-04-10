@@ -104,17 +104,26 @@ function findExistingFbeventsScript() {
     return null;
 }
 
-function pollUntilFbq(run, onTimeout) {
-    const deadline = Date.now() + 10000;
-    const iv = setInterval(() => {
-        if (typeof window.fbq === 'function') {
-            clearInterval(iv);
-            run();
-        } else if (Date.now() > deadline) {
-            clearInterval(iv);
-            if (typeof onTimeout === 'function') onTimeout();
+/**
+ * Base do Meta Pixel: fila `fbq` antes de fbevents.js executar.
+ * Só carregar o script externo sem isto provoca ReferenceError dentro de fbevents.js (fbq is not defined).
+ * @see https://developers.facebook.com/docs/meta-pixel/get-started
+ */
+function ensureMetaFbqStub() {
+    if (typeof window.fbq === 'function') return;
+    const f = window;
+    const n = (f.fbq = function () {
+        if (n.callMethod) {
+            n.callMethod.apply(n, arguments);
+        } else {
+            n.queue.push(arguments);
         }
-    }, 30);
+    });
+    if (!f._fbq) f._fbq = n;
+    n.push = n;
+    n.loaded = false;
+    n.version = '2.0';
+    n.queue = [];
 }
 
 function injectMetaLibAndInit(metaEntries) {
@@ -132,20 +141,18 @@ function injectMetaLibAndInit(metaEntries) {
         window.fbq('track', 'PageView');
     };
 
-    if (typeof window.fbq === 'function') {
+    /** Pixel já hidratado pelo script (não é só o stub com loaded === false). */
+    const fbqReady = typeof window.fbq === 'function' && window.fbq.loaded === true;
+    if (fbqReady) {
         runInits();
         return;
     }
 
+    ensureMetaFbqStub();
+
     const existing = findExistingFbeventsScript();
     if (existing) {
-        pollUntilFbq(runInits, () => {
-            if (import.meta.env.DEV) {
-                console.warn(
-                    '[Getfy][Meta Pixel] fbq indisponível após timeout. Verifique se outro script carrega fbevents.js ou se uma extensão bloqueia connect.facebook.net (ERR_BLOCKED_BY_CLIENT).'
-                );
-            }
-        });
+        runInits();
         return;
     }
 
@@ -153,17 +160,6 @@ function injectMetaLibAndInit(metaEntries) {
     s.async = true;
     s.src = META_FBEvents_URL;
     s.setAttribute('data-getfy-fbevents', '1');
-    s.onload = () => {
-        if (typeof window.fbq === 'function') {
-            runInits();
-        } else {
-            pollUntilFbq(runInits, () => {
-                if (import.meta.env.DEV) {
-                    console.warn('[Getfy][Meta Pixel] fbevents.js carregou mas fbq não foi definido.');
-                }
-            });
-        }
-    };
     s.onerror = () => {
         if (import.meta.env.DEV) {
             console.warn(
@@ -172,6 +168,7 @@ function injectMetaLibAndInit(metaEntries) {
         }
     };
     document.head.appendChild(s);
+    runInits();
 }
 
 function injectTiktokWithFirstPixel(pixelId) {
@@ -317,8 +314,25 @@ function init() {
     emit('ready');
 }
 
-onMounted(init);
-watch(() => props.pixels, init, { deep: true });
+/**
+ * Adia a injeção de scripts de terceiros para depois do próximo paint (2× rAF + macrotask), sem competir com FCP/LCP/hidratação.
+ * Não usa requestIdleCallback: pode atrasar demais e interagir mal com extensões; o stub fbq + fila já torna o Meta Pixel seguro.
+ */
+function scheduleDeferredInit(run) {
+    if (typeof window === 'undefined') {
+        run();
+        return;
+    }
+    const w = window;
+    w.requestAnimationFrame(() => {
+        w.requestAnimationFrame(() => {
+            w.setTimeout(run, 0);
+        });
+    });
+}
+
+onMounted(() => scheduleDeferredInit(init));
+watch(() => props.pixels, () => scheduleDeferredInit(init), { deep: true });
 
 function shouldFireForEntry(entry, triggerType, isOrderBump) {
     if (isOrderBump && entry?.disable_order_bump_events) return false;

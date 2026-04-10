@@ -99,6 +99,7 @@ class CheckoutConfigController extends Controller
 
         $base = array_replace_recursive($defaults, is_array($stored) ? $stored : []);
         $merged = array_replace_recursive($base, $validated['config']);
+        $merged = $this->applyCheckoutConfigIndexedArraysFromRequest($merged, $validated['config']);
 
         // Downsell só pode estar ativo se upsell estiver ativo
         if (!($merged['upsell']['enabled'] ?? false)) {
@@ -155,5 +156,41 @@ class CheckoutConfigController extends Controller
         if ($produto->tenant_id !== $tenantId) {
             abort(403);
         }
+    }
+
+    /**
+     * array_replace_recursive não substitui listas indexadas por [] (merge recursivo mantém índices antigos).
+     * Sobrescreve chaves que são arrays sequenciais quando o cliente envia o valor completo.
+     *
+     * @param  array<string, mixed>  $merged
+     * @param  array<string, mixed>  $requestConfig
+     * @return array<string, mixed>
+     */
+    private function applyCheckoutConfigIndexedArraysFromRequest(array $merged, array $requestConfig): array
+    {
+        if (array_key_exists('reviews', $requestConfig)) {
+            $merged['reviews'] = is_array($requestConfig['reviews'])
+                ? array_values($requestConfig['reviews'])
+                : [];
+        }
+
+        if (isset($requestConfig['appearance']) && is_array($requestConfig['appearance'])) {
+            $appearance = $requestConfig['appearance'];
+            if (! isset($merged['appearance']) || ! is_array($merged['appearance'])) {
+                $merged['appearance'] = [];
+            }
+            if (array_key_exists('banners', $appearance)) {
+                $merged['appearance']['banners'] = is_array($appearance['banners'])
+                    ? array_values($appearance['banners'])
+                    : [];
+            }
+            if (array_key_exists('side_banners', $appearance)) {
+                $merged['appearance']['side_banners'] = is_array($appearance['side_banners'])
+                    ? array_values($appearance['side_banners'])
+                    : [];
+            }
+        }
+
+        return $merged;
     }
 }

@@ -80,7 +80,7 @@ class WebhookEventSubscriber
 
             $payload = $this->serializeEventPayload($event);
             $payload = $this->enrichPayload($event, $payload);
-            $dispatchSync = $this->shouldDispatchSync();
+            $dispatchSync = $this->shouldDispatchSync($eventClass);
 
             foreach ($webhooks as $webhook) {
                 if (! $webhook->listensTo($eventClass) || ! $webhook->shouldFireForProduct($productId)) {
@@ -114,8 +114,17 @@ class WebhookEventSubscriber
         }
     }
 
-    private function shouldDispatchSync(): bool
+    private function shouldDispatchSync(string $eventClass): bool
     {
+        if (config('getfy.webhooks.dispatch_all_sync', false)) {
+            return true;
+        }
+
+        if (config('getfy.webhooks.sync_critical_payment_events', true)
+            && in_array($eventClass, [OrderCompleted::class, OrderPending::class], true)) {
+            return true;
+        }
+
         // Em dev/local, é comum não ter worker configurado corretamente; dispara sync para evitar “silêncio”.
         if (app()->environment('local')) {
             return true;

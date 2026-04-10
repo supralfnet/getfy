@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Events\DashboardLoading;
+use App\Models\CheckoutSession;
 use App\Models\Order;
 use App\Models\Product;
 use Carbon\Carbon;
@@ -26,7 +27,8 @@ class DashboardController extends Controller
         }
 
         $tenantId = auth()->user()->tenant_id;
-        $cacheKey = 'dashboard:' . ($tenantId ?? 'global') . ':' . $period;
+        $userId = auth()->id();
+        $cacheKey = 'dashboard:' . ($tenantId ?? 'global') . ':' . $period . ':u' . ($userId ?? '0');
 
         $payload = Cache::remember($cacheKey, self::CACHE_TTL_SECONDS, function () use ($tenantId, $period) {
             [$start, $end] = $this->rangeForPeriod($period);
@@ -81,6 +83,38 @@ class DashboardController extends Controller
         }
         $quantidadeProdutos = $productsQuery->count();
 
+            $sessionsQuery = CheckoutSession::forTenant($tenantId);
+            if (auth()->user()?->isTeam()) {
+                $allowed = app(TeamAccessService::class)->allowedProductIdsFor(auth()->user());
+                $sessionsQuery->whereIn('product_id', $allowed ?: ['__none__']);
+            }
+            if ($start && $end) {
+                $sessionsQuery->whereBetween('created_at', [$start, $end]);
+            } elseif ($start) {
+                $sessionsQuery->where('created_at', '>=', $start);
+            } elseif ($end) {
+                $sessionsQuery->where('created_at', '<=', $end);
+            }
+
+            $abandonadosVisit = (clone $sessionsQuery)
+                ->whereAbandonmentVisitEligible()
+                ->count();
+
+            $abandonadosForm = (clone $sessionsQuery)
+                ->whereAbandonmentFormEligible()
+                ->count();
+
+            $convertedSessions = (clone $sessionsQuery)
+                ->where('step', CheckoutSession::STEP_CONVERTED)
+                ->count();
+
+            $totalSessoesPeriodo = (clone $sessionsQuery)->count();
+
+            $abandonoCarrinho = $abandonadosVisit + $abandonadosForm;
+            $taxaConversao = $totalSessoesPeriodo > 0
+                ? round((float) $convertedSessions / $totalSessoesPeriodo * 100, 1)
+                : 0.0;
+
             return [
                 'period' => $period,
                 'vendas_totais' => round($vendasTotais, 2),
@@ -88,8 +122,8 @@ class DashboardController extends Controller
                 'quantidade_vendas' => $quantidadeVendas,
                 'ticket_medio' => round($ticketMedio, 2),
                 'formas_pagamento' => $formasPagamento,
-                'taxa_conversao' => 0,
-                'abandono_carrinho' => 0,
+                'taxa_conversao' => $taxaConversao,
+                'abandono_carrinho' => $abandonoCarrinho,
                 'reembolsos_count' => $reembolsosCount,
                 'reembolsos_total' => round($reembolsosTotal, 2),
                 'quantidade_produtos' => $quantidadeProdutos,

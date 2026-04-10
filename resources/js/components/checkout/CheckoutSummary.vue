@@ -94,6 +94,10 @@ function selectCurrency(code) {
             <img
                 :src="product.image_url || 'https://placehold.co/96x96/e2e8f0/334155?text=Produto'"
                 :alt="product.name"
+                width="112"
+                height="112"
+                fetchpriority="high"
+                decoding="async"
                 class="h-24 w-24 rounded-2xl object-cover ring-2 ring-gray-100 shadow-lg sm:h-28 sm:w-28"
             />
         </div>

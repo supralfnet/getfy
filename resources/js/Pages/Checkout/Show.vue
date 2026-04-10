@@ -130,6 +130,16 @@ const ogImage = computed(() => {
     }
     return url;
 });
+
+/** URL absoluta da imagem do produto (LCP) para preload no HTML; mesma lógica que ogImage para paths relativos. */
+const lcpPreloadImageUrl = computed(() => {
+    const url = props.product?.image_url;
+    if (!url) return null;
+    if (typeof window !== 'undefined' && url.startsWith('/')) {
+        return `${window.location.origin}${url}`;
+    }
+    return url;
+});
 const faviconHref = computed(() => seo.value.favicon || '/favicon.ico');
 
 const productImageUrlForNotification = computed(() => {
@@ -187,6 +197,13 @@ const hasCustomBodyEnd = computed(() => String(customBodyEndHtml.value).trim() !
         <meta property="og:title" :content="pageTitle" />
         <meta v-if="pageDescription" property="og:description" :content="pageDescription" />
         <meta v-if="ogImage" property="og:image" :content="ogImage" />
+        <link
+            v-if="lcpPreloadImageUrl"
+            rel="preload"
+            as="image"
+            :href="lcpPreloadImageUrl"
+            fetchpriority="high"
+        />
         <link rel="icon" :href="faviconHref" />
     </Head>
     <div

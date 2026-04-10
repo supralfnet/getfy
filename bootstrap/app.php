@@ -90,7 +90,7 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withSchedule(function (Schedule $schedule): void {
         $schedule->job(new \App\Jobs\SendSubscriptionRemindersJob)->dailyAt('09:00');
-        $schedule->command('checkout:fire-abandoned-cart-webhooks --hours=2')->hourly();
+        $schedule->command('checkout:fire-abandoned-cart-webhooks')->everyTenMinutes();
         $schedule->command('email-campaign:process')->everyMinute();
         $schedule->command('payments:reconcile-pending --limit=200 --days=45')->everyFiveMinutes();
         $schedule->command('schedule:heartbeat')->everyMinute();

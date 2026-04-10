@@ -40,6 +40,18 @@ class CheckoutTrackingController extends Controller
             $updates['name'] = $validated['name'];
         }
 
+        if ($step === CheckoutSession::STEP_FORM_STARTED && $session->form_started_at === null) {
+            $updates['form_started_at'] = now();
+        }
+        if ($step === CheckoutSession::STEP_FORM_FILLED) {
+            if ($session->form_started_at === null) {
+                $updates['form_started_at'] = now();
+            }
+            if ($session->form_filled_at === null) {
+                $updates['form_filled_at'] = now();
+            }
+        }
+
         $session->update($updates);
 
         return response()->json(['success' => true]);

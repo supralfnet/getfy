@@ -938,7 +938,11 @@ class MemberAreaAppController extends Controller
         if ($mode === 'date') {
             $message = 'Disponível em '.$availableAt->format('d/m/Y');
         } elseif ($mode === 'days') {
-            $message = 'Disponível em '.$now->diffInDays($availableAt).' dia(s)';
+            // Carbon 3: diffInDays() retorna float (interpolação entre dias); exibir número inteiro.
+            $days = max(1, (int) round($now->diffInDays($availableAt, true)));
+            $message = $days === 1
+                ? 'Disponível em 1 dia'
+                : 'Disponível em '.$days.' dias';
         } else {
             $message = 'Disponível em '.$availableAt->format('d/m/Y H:i');
         }
