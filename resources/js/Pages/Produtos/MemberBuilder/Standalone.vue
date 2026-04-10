@@ -2836,6 +2836,7 @@ const inputClass = 'block w-full rounded-lg border border-zinc-300 bg-white px-3
                                 <!-- header moved to top -->
                             </template>
                         </div>
+                        <Button type="button" class="mt-4" @click="saveConfig" :disabled="processing">Salvar</Button>
                     </template>
 
                     <template v-else-if="activeTab === 'pwa'">

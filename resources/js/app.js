@@ -1,4 +1,7 @@
 import './bootstrap';
+import { config as inertiaConfig } from '@inertiajs/core';
+
+inertiaConfig.set('prefetch.hoverDelay', 40);
 
 // Migração: versões antigas registravam /painel-sw.js com scope "/" e isso pode interceptar checkout + scripts de terceiros (Meta Pixel).
 // Aqui removemos automaticamente o registro legado (scope raiz) quando existir.
@@ -136,5 +139,8 @@ createInertiaApp({
         vueApp.use(createPinia());
         vueApp.mount(el);
     },
-    progress: false,
+    progress: {
+        delay: 200,
+        color: '#0ea5e9',
+    },
 });

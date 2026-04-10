@@ -40,12 +40,15 @@ const totalLabel = computed(() => {
     const total = progress.value?.total_valid_sales ?? 0;
     return formatCompactCurrency(total);
 });
+
+const panelNavPrefetch = ['hover', 'click'];
 </script>
 
 <template>
     <Link
         v-if="progress"
         href="/conquistas"
+        :prefetch="panelNavPrefetch"
         class="group flex shrink-0 items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
         :class="{
             'flex-col items-stretch gap-2': props.variant === 'sidebar',

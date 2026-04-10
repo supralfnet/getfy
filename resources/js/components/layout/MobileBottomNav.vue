@@ -27,6 +27,8 @@ function isActive(href) {
     return url === href || url.startsWith(href + '/');
 }
 
+const panelNavPrefetch = ['hover', 'click'];
+
 function onScroll() {
     if (typeof window === 'undefined') return;
     const y = window.scrollY ?? window.pageYOffset;
@@ -65,6 +67,7 @@ onUnmounted(() => {
             v-for="item in navItems.slice(0, 2)"
             :key="item.href"
             :href="item.href"
+            :prefetch="panelNavPrefetch"
             :aria-current="isActive(item.href) ? 'page' : undefined"
             :aria-label="item.name"
             class="flex flex-1 flex-col items-center gap-0.5 px-2 py-2 text-xs font-medium rounded-xl transition-colors cursor-pointer touch-manipulation border-0 bg-transparent text-left no-underline"
@@ -81,6 +84,7 @@ onUnmounted(() => {
         <!-- Logo central -->
         <Link
             href="/dashboard"
+            :prefetch="panelNavPrefetch"
             aria-label="Home"
             class="flex shrink-0 flex-col items-center justify-center -mt-6 cursor-pointer touch-manipulation border-0 bg-transparent no-underline"
         >
@@ -101,6 +105,7 @@ onUnmounted(() => {
             v-for="item in navItems.slice(2)"
             :key="item.href"
             :href="item.href"
+            :prefetch="panelNavPrefetch"
             :aria-current="isActive(item.href) ? 'page' : undefined"
             :aria-label="item.name"
             class="flex flex-1 flex-col items-center gap-0.5 px-2 py-2 text-xs font-medium rounded-xl transition-colors cursor-pointer touch-manipulation border-0 bg-transparent text-left no-underline"

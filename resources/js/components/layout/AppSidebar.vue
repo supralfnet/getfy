@@ -106,6 +106,9 @@ function isActive(href) {
     if (href === '/dashboard') return url === '/dashboard' || url === '/';
     return url === href || url.startsWith(href + '/');
 }
+
+/** Prefetch hover + mousedown para navegação do painel (Inertia v2). */
+const panelNavPrefetch = ['hover', 'click'];
 </script>
 
 <template>
@@ -131,6 +134,7 @@ function isActive(href) {
             <template v-if="showText()">
                 <Link
                     href="/dashboard"
+                    :prefetch="panelNavPrefetch"
                     class="flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-zinc-900 dark:text-white"
                 >
                     <template v-if="hasLogoFull()">
@@ -175,6 +179,7 @@ function isActive(href) {
                     <li v-else>
                         <Link
                             :href="item.href"
+                            :prefetch="panelNavPrefetch"
                             :class="[
                                 'menu-item group',
                                 showText() ? 'justify-start' : 'lg:justify-center',

@@ -78,6 +78,21 @@ function onWindowScroll() {
 }
 
 const basePath = computed(() => `/m/${slug.value}`);
+/** Path do login da área atual (slug em path ou /login em domínio/subdomínio próprio). */
+const memberAreaLoginPath = computed(() => {
+    if (typeof window !== 'undefined') {
+        return window.location.pathname.startsWith('/m/') ? `${basePath.value}/login` : '/login';
+    }
+    const bu = props.value?.base_url;
+    if (bu && typeof bu === 'string' && bu.includes('/m/')) {
+        return `${basePath.value}/login`;
+    }
+    return '/login';
+});
+const logoutHref = computed(() => {
+    const target = memberAreaLoginPath.value;
+    return `/logout?redirect=${encodeURIComponent(target)}`;
+});
 const baseUrl = computed(() => {
     if (props.value?.base_url) return props.value.base_url;
     if (typeof window === 'undefined') return '';
@@ -645,7 +660,7 @@ watch(
                             Certificado
                         </Link>
                         <Link
-                            href="/logout"
+                            :href="logoutHref"
                             method="post"
                             as="button"
                             class="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
@@ -762,7 +777,7 @@ watch(
                                 Certificado
                             </Link>
                             <Link
-                                href="/logout"
+                                :href="logoutHref"
                                 method="post"
                                 as="button"
                                 class="flex w-full items-center gap-2 rounded-lg px-4 py-3 text-left text-sm font-medium text-zinc-300 hover:bg-zinc-800"

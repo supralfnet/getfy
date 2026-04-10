@@ -4,6 +4,8 @@ import { Link, usePage } from '@inertiajs/vue3';
 
 const page = usePage();
 const dropdownOpen = ref(false);
+
+const panelNavPrefetch = ['hover', 'click'];
 const dropdownRef = ref(null);
 
 const user = computed(() => page.props.auth?.user ?? null);
@@ -91,6 +93,7 @@ onUnmounted(() => {
             <Link
                 v-if="user.role === 'infoprodutor' || user.role === 'admin'"
                 href="/meu-perfil"
+                :prefetch="panelNavPrefetch"
                 class="mt-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
                 @click="closeDropdown"
             >

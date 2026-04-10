@@ -83,6 +83,40 @@ function getGaEntries(p) {
     return [];
 }
 
+const META_FBEvents_URL = 'https://connect.facebook.net/en_US/fbevents.js';
+
+/** Evita segundo <script> se o checkout ou um script personalizado já carregou fbevents.js. */
+function findExistingFbeventsScript() {
+    const tagged = document.querySelector('script[data-getfy-fbevents="1"]');
+    if (tagged) return tagged;
+    const scripts = document.querySelectorAll('script[src]');
+    for (let i = 0; i < scripts.length; i++) {
+        const el = scripts[i];
+        try {
+            const u = new URL(el.getAttribute('src') || '', location.href);
+            if (u.hostname === 'connect.facebook.net' && u.pathname.includes('fbevents')) {
+                return el;
+            }
+        } catch {
+            /* ignore */
+        }
+    }
+    return null;
+}
+
+function pollUntilFbq(run, onTimeout) {
+    const deadline = Date.now() + 10000;
+    const iv = setInterval(() => {
+        if (typeof window.fbq === 'function') {
+            clearInterval(iv);
+            run();
+        } else if (Date.now() > deadline) {
+            clearInterval(iv);
+            if (typeof onTimeout === 'function') onTimeout();
+        }
+    }, 30);
+}
+
 function injectMetaLibAndInit(metaEntries) {
     const ids = metaEntries.map((e) => String(e.pixel_id).trim()).filter((id) => id && isValidPixelId(id));
     if (!ids.length) return;
@@ -103,22 +137,41 @@ function injectMetaLibAndInit(metaEntries) {
         return;
     }
 
+    const existing = findExistingFbeventsScript();
+    if (existing) {
+        pollUntilFbq(runInits, () => {
+            if (import.meta.env.DEV) {
+                console.warn(
+                    '[Getfy][Meta Pixel] fbq indisponível após timeout. Verifique se outro script carrega fbevents.js ou se uma extensão bloqueia connect.facebook.net (ERR_BLOCKED_BY_CLIENT).'
+                );
+            }
+        });
+        return;
+    }
+
     const s = document.createElement('script');
     s.async = true;
-    s.defer = true;
-    s.innerHTML =
-        "!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');";
-    document.head.appendChild(s);
-
-    const deadline = Date.now() + 10000;
-    const t = setInterval(() => {
+    s.src = META_FBEvents_URL;
+    s.setAttribute('data-getfy-fbevents', '1');
+    s.onload = () => {
         if (typeof window.fbq === 'function') {
-            clearInterval(t);
             runInits();
-        } else if (Date.now() > deadline) {
-            clearInterval(t);
+        } else {
+            pollUntilFbq(runInits, () => {
+                if (import.meta.env.DEV) {
+                    console.warn('[Getfy][Meta Pixel] fbevents.js carregou mas fbq não foi definido.');
+                }
+            });
         }
-    }, 30);
+    };
+    s.onerror = () => {
+        if (import.meta.env.DEV) {
+            console.warn(
+                '[Getfy][Meta Pixel] Falha ao carregar fbevents.js. Causas comuns: extensão bloqueando connect.facebook.net (ERR_BLOCKED_BY_CLIENT), rede ou firewall.'
+            );
+        }
+    };
+    document.head.appendChild(s);
 }
 
 function injectTiktokWithFirstPixel(pixelId) {
